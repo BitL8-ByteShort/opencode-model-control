@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  catalogRefreshNotice,
   catalogSummary,
   evidenceMeta,
   isModelFree,
@@ -190,6 +191,21 @@ test("Free and Paid modes map to explicit cost policy and disable paid routes sa
   assert.equal(free.costPolicy, "free-only");
   assert.equal(free.modelControls[paidModel.id].enabled, false);
   assert.equal(free.roleAssignments["code-worker"], "auto");
+});
+
+test("catalog refresh notices require an OpenCode restart when the connection changed", () => {
+  assert.equal(
+    catalogRefreshNotice({ connectionChanged: false }),
+    "Available OpenCode models updated.",
+  );
+  assert.match(
+    catalogRefreshNotice({ connectionChanged: true }),
+    /connection was updated\. Restart OpenCode to load the changes\./u,
+  );
+  assert.match(
+    catalogRefreshNotice({ incomplete: true, connectionChanged: true }),
+    /limited OpenCode fallback catalog.*Restart OpenCode/su,
+  );
 });
 
 test("derives the visible route from the exact core assignment response", () => {

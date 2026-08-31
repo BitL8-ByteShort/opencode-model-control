@@ -10,6 +10,7 @@ import {
   updateSettings,
 } from "./api";
 import {
+  catalogRefreshNotice,
   normalizeState,
   settingsEqual,
   settingsForApi,
@@ -180,10 +181,12 @@ export default function App() {
       else applyState(await getState());
       const catalogWarning = refreshed?.system?.catalog?.warning;
       let connectionWarning = "";
+      let connectionChanged = false;
       if (integration?.installed && integration.healthy) {
         try {
           const result = await installOpenCodeIntegration();
           setIntegration(result);
+          connectionChanged = result.changed === true;
         } catch (error) {
           connectionWarning = `Models were updated, but the OpenCode connection could not be updated. ${
             error instanceof Error ? error.message : "Open the connection panel and try again."
@@ -193,11 +196,12 @@ export default function App() {
       const warnings = [catalogWarning, connectionWarning].filter(Boolean).join(" ");
       if (warnings) {
         setActionError(warnings);
-        setNotice(catalogWarning
-          ? "Available models were updated with a limited OpenCode fallback catalog."
-          : "Available OpenCode models updated.");
+        setNotice(catalogRefreshNotice({
+          incomplete: Boolean(catalogWarning),
+          connectionChanged,
+        }));
       } else {
-        setNotice("Available OpenCode models updated.");
+        setNotice(catalogRefreshNotice({ connectionChanged }));
       }
     } catch (error) {
       setActionError(error instanceof Error ? error.message : "The catalog could not be refreshed.");

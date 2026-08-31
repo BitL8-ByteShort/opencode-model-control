@@ -2,6 +2,13 @@
 
 All notable changes to OpenCode Model Control are recorded here. The project follows [Semantic Versioning](https://semver.org/).
 
+## 0.1.1 - 2026-08-30
+
+- Switched the public installer to an attached, prebuilt GitHub release package after clean-room testing exposed unreliable npm extraction for a Git-source dependency install.
+- Retained the last complete live catalog across app restarts so an incomplete plugin-free fallback cannot erase previously discovered plugin models.
+- Added an explicit restart notice when a refresh updates an already-connected OpenCode integration.
+- Clarified that local Usage accounting reads session IDs only for a distinct-session aggregate and never returns those identifiers.
+
 ## 0.1.0 - 2026-08-30
 
 Initial public release.

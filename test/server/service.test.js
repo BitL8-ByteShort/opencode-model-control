@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -106,4 +106,68 @@ test("usage is read on demand with the requested fixed window", async (t) => {
   const usage = await service.getUsage("7d");
   assert.deepEqual(received, { window: "7d" });
   assert.equal(usage.window, "7d");
+});
+
+test("a complete catalog snapshot preserves enabled plugin models across a partial restart", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "omc-service-catalog-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const settingsPath = join(directory, "settings.json");
+  const snapshotPath = join(directory, "catalog-snapshot.json");
+  const pluginModel = {
+    id: "plugin/acme-code",
+    provider: "plugin",
+    name: "Acme Code",
+    status: "active",
+    inputCost: 0.2,
+    outputCost: 0.8,
+    inputCostVerified: true,
+    outputCostVerified: true,
+    context: 64_000,
+    toolCall: true,
+    inputModalities: ["text"],
+    outputModalities: ["text"],
+  };
+  const completeDiscovery = async () => {
+    const base = await liveDiscovery()();
+    const models = [...base.models, pluginModel];
+    return {
+      ...base,
+      complete: true,
+      availableIds: models.map(({ id }) => id),
+      models,
+    };
+  };
+  const incompleteDiscovery = async () => {
+    const base = await liveDiscovery()();
+    return {
+      ...base,
+      complete: false,
+      error: {
+        code: "OPENCODE_PLUGIN_DISCOVERY_INCOMPLETE",
+        message: "Plugin-provided models may be missing.",
+      },
+    };
+  };
+
+  const first = await new ControlService({ settingsPath, discovery: completeDiscovery }).initialize();
+  const settings = structuredClone(first.getState().settings);
+  settings.costPreference = "paid-first";
+  settings.costPolicy = "known-cost";
+  settings.modelControls[pluginModel.id].enabled = true;
+  settings.roleAssignments["code-worker"] = pluginModel.id;
+  await first.updateSettings(settings);
+
+  assert.equal((await stat(snapshotPath)).mode & 0o777, 0o600);
+  const second = await new ControlService({ settingsPath, discovery: incompleteDiscovery }).initialize();
+  let state = second.getState();
+  assert.equal(state.system.catalog.complete, false);
+  assert.equal(state.catalog.find(({ id }) => id === pluginModel.id)?.available, true);
+  assert.equal(state.settings.modelControls[pluginModel.id].enabled, true);
+  assert.equal(state.settings.roleAssignments["code-worker"], pluginModel.id);
+
+  state = await second.refreshCatalog();
+  assert.equal(state.catalog.find(({ id }) => id === pluginModel.id)?.available, true);
+  const stored = JSON.parse(await readFile(settingsPath, "utf8"));
+  assert.equal(stored.modelControls[pluginModel.id].enabled, true);
+  assert.equal(stored.roleAssignments["code-worker"], pluginModel.id);
 });

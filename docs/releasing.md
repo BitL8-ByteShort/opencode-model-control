@@ -41,13 +41,13 @@ Do not use a paid model invocation as an install test. Provider access and billi
 
 - Choose the release version and update the changelog or release notes.
 - Confirm the working tree contains only intended release content.
-- Create the signed tag and public repository release.
-- Publish the exact tested artifact to npm with public access.
+- Create the annotated tag and public repository release, and attach the exact tested package tarball.
+- Publish that exact artifact to npm with public access only when registry authorization and ownership are available.
 - Do not describe GitHub or npm publication as complete until each service returns the expected public artifact.
 
 ## 5. Verify the public release
 
-- View the exact version on npm and install it in a new clean environment.
+- Download the exact public GitHub release asset and, when published, view the exact npm version. Install each claimed channel in a new clean environment.
 - Run the packaged startup, refresh, Connect, restart, status, Disconnect, and restart flow again.
 - Verify the repository, homepage, issue, security-reporting, license, and npm links while signed out.
 - Confirm the README commands match the published package and supported OpenCode version.

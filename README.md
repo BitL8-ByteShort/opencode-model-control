@@ -1,14 +1,14 @@
 # OpenCode Model Control
 
-![OpenCode Model Control — Route smarter. Stay in control.](docs/assets/opencode-model-control-banner.png)
+![OpenCode Model Control — Route smarter. Stay in control.](https://raw.githubusercontent.com/BitL8-ByteShort/opencode-model-control/v0.1.1/docs/assets/opencode-model-control-banner.png)
 
 OpenCode Model Control is a local control panel and MCP companion for building a model team inside OpenCode. It discovers the models OpenCode currently exposes, lets the user decide which ones the router may use, assigns an orchestrator and specialist roles, and safely connects that policy to OpenCode.
 
-The control panel runs on `127.0.0.1`. OpenCode remains responsible for provider authentication and model calls; this project does not collect API keys or connect directly to OpenRouter.
+The control panel runs on `127.0.0.1`. OpenCode remains responsible for provider authentication and model calls. Model Control does not request, extract, log, or transmit API keys and does not connect directly to OpenRouter; its guarded connector does read the local OpenCode config so it can preserve unrelated settings and create a private full-config backup.
 
 The running app is authoritative for model names, availability, pricing evidence, and role eligibility.
 
-> **Release status:** the source repository is public at [BitL8-ByteShort/opencode-model-control](https://github.com/BitL8-ByteShort/opencode-model-control). Version `0.1.0` is distributed from its pinned Git tag; publication to the npm registry is not yet claimed.
+> **Release status:** the source repository is public at [BitL8-ByteShort/opencode-model-control](https://github.com/BitL8-ByteShort/opencode-model-control). Version `0.1.1` is distributed as an attached GitHub release package; publication to the npm registry is not yet claimed.
 
 ## What it does
 
@@ -43,14 +43,14 @@ The panel can open without OpenCode, but it cannot discover the user's current m
 
 ## Install
 
-Install the pinned public release directly from GitHub:
+Install the pinned public release package directly from GitHub:
 
 ```sh
-npm install --global github:BitL8-ByteShort/opencode-model-control#v0.1.0
+npm install --global https://github.com/BitL8-ByteShort/opencode-model-control/releases/download/v0.1.1/opencode-model-control-0.1.1.tgz
 opencode-model-control
 ```
 
-The first command downloads the tagged source, runs its release checks and build, and installs the `opencode-model-control` command. The second command starts the local panel and opens it in the default browser.
+The first command installs the exact prebuilt release artifact and its runtime dependencies. The second command starts the local panel and opens it in the default browser.
 
 Then:
 
@@ -157,7 +157,7 @@ The collapsed **Advanced tools for developers** section is optional. It shows th
 
 OpenCode Model Control does not include telemetry or remote analytics. Its settings, connection receipt, and Usage view stay on this computer. The loopback panel is not an authentication boundary, so do not expose its port to a LAN, tunnel, container network, or the public internet.
 
-The **Usage** page runs a fixed, plugin-free aggregate query through OpenCode's local database command. It selects only assistant model IDs, session/message counts, token counters, timestamps, and recorded cost. It does not select prompts, responses, titles, projects, paths, session identifiers, raw message JSON, or credentials. The default window is 30 days, with 7-day, 90-day, and all-time views. Reading Usage does not invoke a model or create new provider usage.
+The **Usage** page runs a fixed, plugin-free aggregate query through OpenCode's local database command. It selects assistant model IDs, token counters, timestamps, recorded cost, and session IDs solely for a distinct-session count. The API returns only aggregate session/message counts and per-model totals; it never returns session identifiers, prompts, responses, titles, projects, paths, raw message JSON, or credentials. The default window is 30 days, with 7-day, 90-day, and all-time views. Reading Usage does not invoke a model or create new provider usage.
 
 Usage values are provider-reported accounting stored by OpenCode. A zero can mean no activity or that a provider omitted accounting, and recorded cost is not a provider invoice. If the local schema or command is incompatible, the page reports Usage as unavailable instead of substituting zero values.
 

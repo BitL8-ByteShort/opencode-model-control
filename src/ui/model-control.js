@@ -263,6 +263,15 @@ export function setCostMode(settings, catalog, mode) {
   return next;
 }
 
+export function catalogRefreshNotice({ incomplete = false, connectionChanged = false } = {}) {
+  const updated = incomplete
+    ? "Available models were updated with a limited OpenCode fallback catalog."
+    : "Available OpenCode models updated.";
+  return connectionChanged
+    ? `${updated} The OpenCode connection was updated. Restart OpenCode to load the changes.`
+    : updated;
+}
+
 export function catalogSummary(catalog, settings) {
   return catalog.reduce(
     (summary, model) => {

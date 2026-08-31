@@ -23,7 +23,7 @@ OpenCode starts the configured primary
         `-- media must be sent directly to omc-vision-worker
 ```
 
-OpenCode, OpenCode Zen, OpenRouter, and other model providers remain separate systems with their own credentials, terms, availability, pricing, and data handling. Model Control does not collect provider credentials or call provider APIs directly.
+OpenCode, OpenCode Zen, OpenRouter, and other model providers remain separate systems with their own credentials, terms, availability, pricing, and data handling. Model Control does not request, extract, log, or transmit provider credentials and does not call provider APIs directly. Its connector does read the local OpenCode config to preserve unrelated settings and create a private full-config backup.
 
 ## Components
 
@@ -104,7 +104,7 @@ Only `omc-router` receives the `model-control_*` tools. Specialists deny those t
 
 The service binds to `127.0.0.1`, rejects non-loopback host headers, and exposes the UI plus a bounded JSON API. State-changing requests require trusted same-origin JSON requests. It is not designed for remote hosting or untrusted multi-user access. The project does not include telemetry or remote analytics; OpenCode, configured plugins, and model providers remain separate network and reporting boundaries.
 
-The Usage API runs a fixed aggregate query through `opencode --pure db ... --format json`. It accepts only four allowlisted time windows and projects assistant model identifiers, aggregate sessions/messages, token counters, timestamps, and recorded cost. It does not select prompts, responses, titles, project metadata, paths, session identifiers, raw JSON, parts, or credentials. The child process has a ten-second timeout and one-mebibyte output cap, at most 250 model rows are returned, and schema/process failures remain distinguishable from a compatible empty database.
+The Usage API runs a fixed aggregate query through `opencode --pure db ... --format json`. It accepts only four allowlisted time windows and projects assistant model identifiers, token counters, timestamps, recorded cost, and session IDs solely for a distinct-session count. It returns aggregate sessions/messages and per-model totals, never session identifiers, prompts, responses, titles, project metadata, paths, raw JSON, parts, or credentials. The child process has a ten-second timeout and one-mebibyte output cap, at most 250 model rows are returned, and schema/process failures remain distinguishable from a compatible empty database.
 
 ## Why MCP is not the first router
 

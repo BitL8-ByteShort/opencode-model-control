@@ -12,10 +12,15 @@ import { ROLE_REQUIREMENTS } from "../core/constants.js";
 import { OpenCodeIntegrationInstaller } from "../installer/index.js";
 import { buildOpenCodeConfig, renderOpenCodeConfig } from "../opencode/index.js";
 import { BENCHMARK_SUMMARY } from "./benchmark-summary.js";
+import {
+  readCatalogSnapshot,
+  resolveCatalogSnapshotPath,
+  writeCatalogSnapshot,
+} from "./catalog-store.js";
 import { classifyRouteRequest } from "./task-classifier.js";
 import { discoverOpenCode, mergeDiscoveredCatalog } from "./opencode-cli.js";
 import { readOpenCodeUsage } from "./opencode-usage.js";
-import { readSettings, writeSettings } from "./settings-store.js";
+import { readSettings, resolveSettingsPath, writeSettings } from "./settings-store.js";
 
 function evidenceFor(model) {
   if (model.evidence) return model.evidence;
@@ -113,11 +118,13 @@ function unavailableCatalog(catalog) {
 export class ControlService {
   constructor({
     settingsPath,
+    catalogSnapshotPath,
     discovery = discoverOpenCode,
     integrationInstaller = new OpenCodeIntegrationInstaller(),
     usageReader = readOpenCodeUsage,
   } = {}) {
-    this.settingsPath = settingsPath;
+    this.settingsPath = settingsPath ?? resolveSettingsPath();
+    this.catalogSnapshotPath = catalogSnapshotPath ?? resolveCatalogSnapshotPath(this.settingsPath);
     this.discovery = discovery;
     this.integrationInstaller = integrationInstaller;
     this.usageReader = usageReader;
@@ -137,6 +144,11 @@ export class ControlService {
   }
 
   async initialize() {
+    const persistedCatalog = await readCatalogSnapshot({ path: this.catalogSnapshotPath });
+    if (persistedCatalog) {
+      this.catalog = persistedCatalog;
+      this.hasLiveSnapshot = true;
+    }
     await this.#applyDiscovery(await this.discovery({ refresh: false }));
     this.settings = await readSettings({
       path: this.settingsPath,
@@ -200,6 +212,11 @@ export class ControlService {
       }
       this.catalog = validateCatalog(merged);
       this.hasLiveSnapshot = true;
+      if (result.complete === true) {
+        this.catalog = await writeCatalogSnapshot(this.catalog, {
+          path: this.catalogSnapshotPath,
+        });
+      }
     } else if (!this.hasLiveSnapshot) {
       this.catalog = unavailableCatalog(this.baseCatalog);
     }
