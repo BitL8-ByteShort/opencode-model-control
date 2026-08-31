@@ -23,7 +23,12 @@
         "costPreference": { "enum": ["free-first", "paid-first"] },
         "costPolicy": { "enum": ["free-only", "known-cost"] },
         "maxDelegationDepth": { "type": "integer", "minimum": 0, "maximum": 1 },
-        "maxFallbacksPerAssignment": { "type": "integer", "minimum": 0, "maximum": 1 },
+        "maxFallbacksPerAssignment": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Legacy settings key for the maximum review-driven repair passes; it does not enable alternate-model fallback."
+        },
         "recursiveDelegation": { "const": false }
       }
     },
@@ -56,12 +61,15 @@
         "role": { "enum": ["orchestrator", "code-worker", "vision-worker", "reviewer"] },
         "modelId": { "$ref": "#/$defs/modelId" },
         "fallbackModelId": {
-          "oneOf": [
-            { "$ref": "#/$defs/modelId" },
-            { "type": "null" }
-          ]
+          "type": "null",
+          "deprecated": true,
+          "description": "Legacy contract field retained for compatibility; alternate-model fallback is not executed."
         },
-        "fallbackCount": { "type": "integer", "minimum": 0, "maximum": 1 },
+        "fallbackCount": {
+          "const": 0,
+          "deprecated": true,
+          "description": "Legacy contract field retained for compatibility; alternate-model fallback is not executed."
+        },
         "selection": { "enum": ["auto", "explicit"] },
         "access": { "enum": ["read", "write"] },
         "modalities": {

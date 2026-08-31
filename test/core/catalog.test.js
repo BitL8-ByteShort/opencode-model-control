@@ -277,4 +277,24 @@ test("unknown pricing and missing tool calls fail eligibility closed", () => {
   });
   assert.equal(candidates.some((model) => model.id === unknown.id), false);
   assert.equal(candidates.some((model) => model.id === noTools.id), false);
+
+  const noToolVision = structuredClone(
+    catalog.models.find((model) => model.id === "opencode/mimo-v2.5-free"),
+  );
+  noToolVision.id = "provider/no-tool-vision";
+  noToolVision.label = "No Tool Vision";
+  noToolVision.toolCall = false;
+  catalog.models.push(noToolVision);
+  settings.modelControls[noToolVision.id] = { enabled: true, available: true };
+  const visionCandidates = eligibleModelsForRole({
+    catalog,
+    settings,
+    role: "vision-worker",
+    modalities: ["text", "image"],
+    access: "read",
+  });
+  assert.equal(
+    visionCandidates.some((model) => model.id === noToolVision.id),
+    false,
+  );
 });

@@ -18,7 +18,7 @@ import {
 } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 
 import { buildOpenCodeConfig } from "../opencode/index.js";
@@ -35,6 +35,7 @@ const MAX_MCP_OUTPUT_BYTES = 1024 * 1024;
 const MCP_HANDSHAKE_TIMEOUT_MS = 10_000;
 const MCP_PROTOCOL_VERSION = "2025-11-25";
 const RECEIPT_SCHEMA_VERSION = 1;
+const MANAGED_SURFACE_VERSION = 1;
 const OWNED_ROOTS = ["mcp", "tools", "agent"];
 const OWNED_PATHS = [
   ["mcp", "model-control"],
@@ -43,10 +44,15 @@ const OWNED_PATHS = [
   ["agent", "omc-code-worker"],
   ["agent", "omc-vision-worker"],
   ["agent", "omc-reviewer"],
+  ["plugin"],
+  ["default_agent"],
 ];
 const OWNED_PATH_KEYS = new Set(OWNED_PATHS.map(pathKey));
 const DEFAULT_CLI_PATH = fileURLToPath(
   new URL("../../bin/opencode-model-control.js", import.meta.url),
+);
+const DEFAULT_PLUGIN_PATH = fileURLToPath(
+  new URL("../opencode/plugin.js", import.meta.url),
 );
 const CONFIG_LAUNCH_TIMEOUT_MS = 10_000;
 
@@ -136,6 +142,8 @@ export function buildManagedOpenCodeFragment({
   settings,
   nodePath = process.execPath,
   cliPath = DEFAULT_CLI_PATH,
+  pluginUrl = pathToFileURL(DEFAULT_PLUGIN_PATH).href,
+  includeDefaultAgent = false,
 } = {}) {
   if (!isAbsolute(nodePath) || !isAbsolute(cliPath)) {
     throw new OpenCodeIntegrationError(
@@ -146,12 +154,37 @@ export function buildManagedOpenCodeFragment({
 
   const generated = structuredClone(buildOpenCodeConfig({ catalog, settings }));
   generated.mcp["model-control"].command = [nodePath, cliPath, "mcp"];
-  return Object.fromEntries(
+  const fragment = Object.fromEntries(
     OWNED_ROOTS.filter((key) => generated[key] !== undefined).map((key) => [
       key,
       generated[key],
     ]),
   );
+  assertCanonicalFileUrl(pluginUrl);
+  fragment.plugin = [pluginUrl];
+  if (includeDefaultAgent) fragment.default_agent = "omc-router";
+  return fragment;
+}
+
+function assertCanonicalFileUrl(value) {
+  if (typeof value !== "string") {
+    throw new OpenCodeIntegrationError("The managed plugin URL is invalid.", {
+      code: "PLUGIN_URL_INVALID",
+      statusCode: 422,
+    });
+  }
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "file:" || pathToFileURL(fileURLToPath(url)).href !== url.href) {
+      throw new Error("not a canonical file URL");
+    }
+  } catch (error) {
+    throw new OpenCodeIntegrationError("The managed plugin URL is invalid.", {
+      code: "PLUGIN_URL_INVALID",
+      statusCode: 422,
+      cause: error,
+    });
+  }
 }
 
 async function canonicalizeMcpCommand(command) {
@@ -184,6 +217,48 @@ async function validateMcpCommandTargets(command) {
   await canonicalizeMcpCommand(command);
 }
 
+async function canonicalizePluginUrl(pluginPath) {
+  if (typeof pluginPath !== "string" || !isAbsolute(pluginPath)) {
+    throw new OpenCodeIntegrationError(
+      "The managed routing plugin path must be absolute.",
+      { code: "PLUGIN_PATH_INVALID", statusCode: 422 },
+    );
+  }
+  try {
+    const canonicalPath = await canonicalCommandTarget(pluginPath, {
+      label: "The Model Control routing plugin",
+      accessMode: fileConstants.R_OK,
+    });
+    return pathToFileURL(canonicalPath).href;
+  } catch (error) {
+    throw new OpenCodeIntegrationError(
+      "The Model Control routing plugin is missing or inaccessible.",
+      { code: "PLUGIN_RUNTIME_UNAVAILABLE", statusCode: 422, cause: error },
+    );
+  }
+}
+
+async function validatePluginUrlTarget(pluginUrl) {
+  assertCanonicalFileUrl(pluginUrl);
+  let pluginPath;
+  try {
+    pluginPath = fileURLToPath(pluginUrl);
+  } catch (error) {
+    throw new OpenCodeIntegrationError("The managed plugin URL is invalid.", {
+      code: "PLUGIN_URL_INVALID",
+      statusCode: 422,
+      cause: error,
+    });
+  }
+  const canonicalUrl = await canonicalizePluginUrl(pluginPath);
+  if (canonicalUrl !== pluginUrl) {
+    throw new OpenCodeIntegrationError(
+      "The managed routing plugin URL is no longer canonical.",
+      { code: "PLUGIN_PATH_CHANGED", statusCode: 422 },
+    );
+  }
+}
+
 async function canonicalCommandTarget(path, { label, accessMode }) {
   try {
     const canonicalPath = await realpath(path);
@@ -210,6 +285,19 @@ function commandFromEntries(entries) {
   return entry?.value?.command;
 }
 
+function pluginUrlFromEntries(entries) {
+  return entries.find(
+    (entry) =>
+      entry.kind === "array-item" && pathKey(entry.path) === pathKey(["plugin"]),
+  )?.value;
+}
+
+function receiptRequiresUpdate(receipt, { command, pluginUrl }) {
+  return receipt.managedSurfaceVersion !== MANAGED_SURFACE_VERSION ||
+    !isDeepStrictEqual(commandFromEntries(receipt.entries), command) ||
+    pluginUrlFromEntries(receipt.entries) !== pluginUrl;
+}
+
 export class OpenCodeIntegrationInstaller {
   constructor({
     configPath,
@@ -218,6 +306,7 @@ export class OpenCodeIntegrationInstaller {
     home = homedir(),
     nodePath = process.execPath,
     cliPath = DEFAULT_CLI_PATH,
+    pluginPath = DEFAULT_PLUGIN_PATH,
     now = () => new Date(),
     id = randomUUID,
     verify = verifyOpenCodeConfig,
@@ -232,6 +321,7 @@ export class OpenCodeIntegrationInstaller {
     this.home = home;
     this.nodePath = nodePath;
     this.cliPath = cliPath;
+    this.pluginPath = pluginPath;
     this.now = now;
     this.id = id;
     this.verify = verify;
@@ -255,21 +345,6 @@ export class OpenCodeIntegrationInstaller {
         code: "RECEIPT_PATH_MISMATCH",
         message: "The saved integration receipt points to a different OpenCode config file.",
       };
-    }
-
-    if (receipt) {
-      try {
-        await validateMcpCommandTargets(commandFromEntries(receipt.entries));
-      } catch (error) {
-        return {
-          ...base,
-          managed: true,
-          healthy: false,
-          requiresAttention: true,
-          code: "MCP_COMMAND_UNAVAILABLE",
-          message: safeCommandErrorMessage(error),
-        };
-      }
     }
 
     let config;
@@ -299,7 +374,10 @@ export class OpenCodeIntegrationInstaller {
     }
 
     if (!receipt) {
-      const collision = firstOwnedCollision(config.value);
+      const pluginUrl = await canonicalizePluginUrl(this.pluginPath);
+      const collision = firstOwnedCollision(config.value, [
+        { kind: "array-item", path: ["plugin"], value: pluginUrl },
+      ]);
       return collision
         ? {
             ...base,
@@ -309,7 +387,7 @@ export class OpenCodeIntegrationInstaller {
             code: "OWNERSHIP_UNVERIFIED",
             message: `OpenCode already contains ${formatPath(collision)} without an installer receipt.`,
           }
-        : { ...base, configExists: true };
+        : { ...base, configExists: true, ...defaultAgentMetadata(config.value, null) };
     }
 
     const unexpected = firstUnexpectedOwnedEntry(config.value, receipt.entries);
@@ -337,6 +415,62 @@ export class OpenCodeIntegrationInstaller {
       };
     }
 
+    let currentCommand;
+    let currentPluginUrl;
+    try {
+      currentCommand = await canonicalizeMcpCommand([
+        this.nodePath,
+        this.cliPath,
+        "mcp",
+      ]);
+      currentPluginUrl = await canonicalizePluginUrl(this.pluginPath);
+    } catch (error) {
+      const pluginFailure = error?.code?.startsWith("PLUGIN_");
+      return {
+        ...base,
+        configExists: true,
+        managed: true,
+        healthy: false,
+        requiresAttention: true,
+        code: pluginFailure ? "PLUGIN_RUNTIME_UNAVAILABLE" : "MCP_COMMAND_UNAVAILABLE",
+        message: pluginFailure
+          ? safePluginErrorMessage(error)
+          : safeCommandErrorMessage(error),
+      };
+    }
+
+    if (receiptRequiresUpdate(receipt, { command: currentCommand, pluginUrl: currentPluginUrl })) {
+      return {
+        ...base,
+        configExists: true,
+        installed: true,
+        managed: true,
+        healthy: false,
+        requiresAttention: true,
+        code: "UPDATE_REQUIRED",
+        message: "OpenCode Model Control is connected through an older managed installation. Update the connection to use this installed version.",
+        ...defaultAgentMetadata(config.value, receipt),
+      };
+    }
+
+    try {
+      await validateMcpCommandTargets(commandFromEntries(receipt.entries));
+      await validatePluginUrlTarget(pluginUrlFromEntries(receipt.entries));
+    } catch (error) {
+      const pluginFailure = error?.code?.startsWith("PLUGIN_");
+      return {
+        ...base,
+        configExists: true,
+        managed: true,
+        healthy: false,
+        requiresAttention: true,
+        code: pluginFailure ? "PLUGIN_RUNTIME_UNAVAILABLE" : "MCP_COMMAND_UNAVAILABLE",
+        message: pluginFailure
+          ? safePluginErrorMessage(error)
+          : safeCommandErrorMessage(error),
+      };
+    }
+
     return {
       ...base,
       configExists: true,
@@ -345,11 +479,11 @@ export class OpenCodeIntegrationInstaller {
       healthy: true,
       requiresAttention: false,
       code: "INSTALLED",
-      message: "OpenCode Model Control is connected.",
+      ...defaultAgentStatus(config.value, receipt),
     };
   }
 
-  async install({ catalog, settings } = {}) {
+  async install({ catalog, settings, makeDefaultAgent } = {}) {
     const configPath = await this.#resolveConfigPath();
     const receipt = await this.#readReceipt();
     if (receipt && receipt.configPath !== configPath) {
@@ -365,14 +499,28 @@ export class OpenCodeIntegrationInstaller {
       "mcp",
     ]);
 
+    const pluginUrl = await canonicalizePluginUrl(this.pluginPath);
+    const original = await this.#readConfigOrDefault(configPath);
+    const previousEntries = receipt?.entries ?? [];
+    const ownsDefaultAgent = previousEntries.some(
+      ({ path }) => pathKey(path) === pathKey(["default_agent"]),
+    );
+    const requestedDefault = resolveMakeDefaultAgent({
+      makeDefaultAgent,
+      settings,
+      ownsDefaultAgent,
+      config: original.value,
+    });
+
     const fragment = buildManagedOpenCodeFragment({
       catalog,
       settings,
       nodePath: command[0],
       cliPath: command[1],
+      pluginUrl,
+      includeDefaultAgent: requestedDefault,
     });
     const desiredEntries = entriesFromFragment(fragment);
-    const original = await this.#readConfigOrDefault(configPath);
 
     if (receipt) {
       const mismatch = firstReceiptMismatch(original.value, receipt.entries);
@@ -389,8 +537,19 @@ export class OpenCodeIntegrationInstaller {
           `Refusing to replace unmanaged product entry ${formatPath(unexpected)}.`,
         );
       }
+      const newCollision = firstNewDesiredCollision(
+        original.value,
+        receipt.entries,
+        desiredEntries,
+      );
+      if (newCollision) {
+        throw integrationError(
+          "OWNERSHIP_CONFLICT",
+          `Refusing to claim existing ${formatPath(newCollision)} without receipt ownership.`,
+        );
+      }
     } else {
-      const collision = firstOwnedCollision(original.value);
+      const collision = firstOwnedCollision(original.value, desiredEntries);
       if (collision) {
         throw integrationError(
           "OWNERSHIP_UNVERIFIED",
@@ -399,19 +558,23 @@ export class OpenCodeIntegrationInstaller {
       }
     }
 
-    const previousEntries = receipt?.entries ?? [];
     const operations = planInstallOperations(
       original.value,
       previousEntries,
       desiredEntries,
     );
-    const unchanged = operations.length === 0 && receipt !== null;
+    const unchanged = operations.length === 0 &&
+      receipt !== null &&
+      !receiptRequiresUpdate(receipt, { command, pluginUrl });
     if (unchanged) {
       return { ...(await this.status()), changed: false, backupCreated: false };
     }
 
     const createdContainers = receipt?.createdContainers ?? OWNED_ROOTS.filter(
       (root) => !Object.hasOwn(original.value, root),
+    );
+    const createdCollections = receipt?.createdCollections ?? (
+      Object.hasOwn(original.value, "plugin") ? [] : ["plugin"]
     );
     const nextSource = applyJsoncOperations(original.source, operations);
     try {
@@ -445,12 +608,14 @@ export class OpenCodeIntegrationInstaller {
         : null;
       const nextReceipt = {
         schemaVersion: RECEIPT_SCHEMA_VERSION,
+        managedSurfaceVersion: MANAGED_SURFACE_VERSION,
         product: "opencode-model-control",
         configPath,
         installedAt: receipt?.installedAt ?? this.now().toISOString(),
         updatedAt: this.now().toISOString(),
         createdConfig: receipt?.createdConfig ?? !original.exists,
         createdContainers,
+        createdCollections,
         backupPath: path,
         entries: desiredEntries,
         configDigest: digest(nextSource),
@@ -501,7 +666,11 @@ export class OpenCodeIntegrationInstaller {
       );
     }
 
-    const operations = receipt.entries.map(({ path }) => ({ action: "remove", path }));
+    const operations = receipt.entries.map((entry) =>
+      operationToRemoveEntry(original.value, entry, {
+        removeEmptyCollection: receipt.createdCollections?.includes(entry.path[0]) === true,
+      }),
+    );
     const withoutEntries = applyJsoncOperations(original.source, operations);
     const parsedWithoutEntries = parseJsoncDocument(withoutEntries, { path: configPath });
     for (const root of receipt.createdContainers ?? []) {
@@ -728,6 +897,52 @@ export class OpenCodeIntegrationInstaller {
   }
 }
 
+function resolveMakeDefaultAgent({
+  makeDefaultAgent,
+  settings,
+  ownsDefaultAgent,
+  config,
+}) {
+  const configured = makeDefaultAgent ?? settings?.makeRouterDefault;
+  if (configured !== undefined && typeof configured !== "boolean") {
+    throw new OpenCodeIntegrationError(
+      "makeDefaultAgent must be true or false.",
+      { code: "DEFAULT_AGENT_OPTION_INVALID", statusCode: 400 },
+    );
+  }
+  const enabled = configured ?? true;
+  if (!enabled) return false;
+  if (ownsDefaultAgent) return true;
+  return !Object.hasOwn(config, "default_agent");
+}
+
+function defaultAgentStatus(config, receipt) {
+  const metadata = defaultAgentMetadata(config, receipt);
+  return {
+    ...metadata,
+    message: metadata.defaultAgentManaged
+      ? "OpenCode Model Control is connected and Omc-Router is the default agent."
+      : metadata.defaultAgentPreserved
+        ? "OpenCode Model Control is connected. Your existing default agent was preserved."
+        : "OpenCode Model Control is connected.",
+  };
+}
+
+function defaultAgentMetadata(config, receipt) {
+  const defaultAgent = typeof config.default_agent === "string"
+    ? config.default_agent
+    : null;
+  const defaultAgentManaged = Boolean(receipt?.entries?.some(
+    ({ path }) => pathKey(path) === pathKey(["default_agent"]),
+  ));
+  const defaultAgentPreserved = defaultAgent !== null && !defaultAgentManaged;
+  return {
+    defaultAgent,
+    defaultAgentManaged,
+    defaultAgentPreserved,
+  };
+}
+
 export async function verifyOpenCodeConfig({
   source,
   entries,
@@ -763,7 +978,12 @@ export async function verifyOpenCodeConfig({
     }
     for (const entry of entries) {
       const current = valueAtPath(resolved, entry.path);
-      if (!current.exists || !containsManagedValue(current.value, entry.value)) {
+      const accepted = entry.kind === "array-item"
+        ? current.exists &&
+          Array.isArray(current.value) &&
+          current.value.filter((value) => isDeepStrictEqual(value, entry.value)).length === 1
+        : current.exists && containsManagedValue(current.value, entry.value);
+      if (!accepted) {
         throw new OpenCodeIntegrationError(
           `OpenCode did not accept ${formatPath(entry.path)} during verification.`,
           { code: "OPENCODE_VERIFY_MISMATCH", statusCode: 422 },
@@ -1044,19 +1264,64 @@ function executeOpenCodeConfigCheck({ configPath, cwd, verificationRoot, env, ex
 
 function planInstallOperations(config, previousEntries, desiredEntries) {
   const operations = [];
+  const working = structuredClone(config);
+  const queue = (operation) => {
+    operations.push(operation);
+    applyOperationToObject(working, operation);
+  };
   const desiredByPath = new Map(desiredEntries.map((entry) => [pathKey(entry.path), entry]));
   for (const previous of previousEntries) {
-    if (!desiredByPath.has(pathKey(previous.path))) {
-      operations.push({ action: "remove", path: previous.path });
+    const desired = desiredByPath.get(pathKey(previous.path));
+    const arrayItemChanged =
+      previous.kind === "array-item" &&
+      desired?.kind === "array-item" &&
+      !isDeepStrictEqual(previous.value, desired.value);
+    if (!desired || arrayItemChanged) {
+      queue(operationToRemoveEntry(working, previous));
     }
   }
   for (const entry of desiredEntries) {
-    const current = valueAtPath(config, entry.path);
+    if (entry.kind === "array-item") {
+      const current = valueAtPath(working, entry.path);
+      if (!current.exists) {
+        queue({ action: "set", path: entry.path, value: [entry.value] });
+        continue;
+      }
+      assertManagedArrayShape(current.value, entry.path);
+      const matches = current.value.filter((value) => isDeepStrictEqual(value, entry.value));
+      if (matches.length > 1) {
+        throw integrationError(
+          "OWNERSHIP_CONFLICT",
+          `The managed plugin entry is duplicated at ${formatPath(entry.path)}.`,
+        );
+      }
+      if (matches.length === 0) {
+        queue({
+          action: "set",
+          path: entry.path,
+          value: [...current.value, entry.value],
+        });
+      }
+      continue;
+    }
+
+    const current = valueAtPath(working, entry.path);
     if (!current.exists || !isDeepStrictEqual(current.value, entry.value)) {
-      operations.push({ action: "set", path: entry.path, value: entry.value });
+      queue({ action: "set", path: entry.path, value: entry.value });
     }
   }
   return operations;
+}
+
+function applyOperationToObject(root, operation) {
+  let parent = root;
+  for (const segment of operation.path.slice(0, -1)) {
+    if (!isPlainObject(parent[segment])) parent[segment] = {};
+    parent = parent[segment];
+  }
+  const key = operation.path.at(-1);
+  if (operation.action === "remove") delete parent[key];
+  else parent[key] = structuredClone(operation.value);
 }
 
 function entriesFromFragment(fragment) {
@@ -1066,10 +1331,22 @@ function entriesFromFragment(fragment) {
       entries.push({ path: [root, key], value });
     }
   }
+  if (fragment.plugin !== undefined) {
+    if (!Array.isArray(fragment.plugin) || fragment.plugin.length !== 1) {
+      throw new OpenCodeIntegrationError(
+        "The managed plugin fragment must contain exactly one entry.",
+        { code: "PLUGIN_FRAGMENT_INVALID", statusCode: 500 },
+      );
+    }
+    entries.push({ kind: "array-item", path: ["plugin"], value: fragment.plugin[0] });
+  }
+  if (fragment.default_agent !== undefined) {
+    entries.push({ path: ["default_agent"], value: fragment.default_agent });
+  }
   return entries;
 }
 
-function firstOwnedCollision(config) {
+function firstOwnedCollision(config, desiredEntries = []) {
   for (const root of OWNED_ROOTS) {
     if (Object.hasOwn(config, root) && !isPlainObject(config[root])) return [root];
   }
@@ -1083,23 +1360,100 @@ function firstOwnedCollision(config) {
       if (valueAtPath(config, path).exists) return path;
     }
   }
+  const managedPlugin = desiredEntries.find(
+    (entry) => entry.kind === "array-item" && pathKey(entry.path) === pathKey(["plugin"]),
+  );
+  if (Object.hasOwn(config, "plugin")) {
+    if (!Array.isArray(config.plugin)) return ["plugin"];
+    if (!isValidManagedArrayShape(config.plugin)) return ["plugin"];
+    if (
+      managedPlugin &&
+      config.plugin.some((value) => isDeepStrictEqual(value, managedPlugin.value))
+    ) {
+      return ["plugin"];
+    }
+  }
   return null;
 }
 
 function firstReceiptMismatch(config, entries) {
   for (const entry of entries) {
-    const current = valueAtPath(config, entry.path);
-    if (!current.exists || !isDeepStrictEqual(current.value, entry.value)) return entry.path;
+    if (!managedEntryMatches(config, entry)) return entry.path;
   }
   return null;
 }
 
 function firstUnexpectedOwnedEntry(config, entries) {
   const managed = new Set(entries.map((entry) => pathKey(entry.path)));
-  for (const path of OWNED_PATHS) {
+  for (const path of OWNED_PATHS.filter((path) => path.length === 2)) {
     if (!managed.has(pathKey(path)) && valueAtPath(config, path).exists) return path;
   }
   return null;
+}
+
+function firstNewDesiredCollision(config, previousEntries, desiredEntries) {
+  const previous = new Set(previousEntries.map((entry) => pathKey(entry.path)));
+  for (const entry of desiredEntries) {
+    if (previous.has(pathKey(entry.path))) continue;
+    const current = valueAtPath(config, entry.path);
+    if (!current.exists) continue;
+    if (entry.kind === "array-item") {
+      if (!isValidManagedArrayShape(current.value)) return entry.path;
+      if (current.value.some((value) => isDeepStrictEqual(value, entry.value))) {
+        return entry.path;
+      }
+      continue;
+    }
+    return entry.path;
+  }
+  return null;
+}
+
+function managedEntryMatches(config, entry) {
+  const current = valueAtPath(config, entry.path);
+  if (!current.exists) return false;
+  if (entry.kind === "array-item") {
+    if (!isValidManagedArrayShape(current.value)) return false;
+    return current.value.filter((value) => isDeepStrictEqual(value, entry.value)).length === 1;
+  }
+  return isDeepStrictEqual(current.value, entry.value);
+}
+
+function operationToRemoveEntry(config, entry, { removeEmptyCollection = false } = {}) {
+  if (entry.kind !== "array-item") return { action: "remove", path: entry.path };
+  const current = valueAtPath(config, entry.path);
+  if (!current.exists || !Array.isArray(current.value)) {
+    throw integrationError(
+      "MANAGED_CONFIG_CHANGED",
+      `The managed entry ${formatPath(entry.path)} changed outside Model Control.`,
+    );
+  }
+  const matches = current.value.filter((value) => isDeepStrictEqual(value, entry.value));
+  if (matches.length !== 1) {
+    throw integrationError(
+      "MANAGED_CONFIG_CHANGED",
+      `The managed entry ${formatPath(entry.path)} changed outside Model Control.`,
+    );
+  }
+  const next = current.value.filter((value) => !isDeepStrictEqual(value, entry.value));
+  return next.length === 0 && removeEmptyCollection
+    ? { action: "remove", path: entry.path }
+    : { action: "set", path: entry.path, value: next };
+}
+
+function assertManagedArrayShape(value, path) {
+  if (!isValidManagedArrayShape(value)) {
+    throw integrationError(
+      "OWNERSHIP_CONFLICT",
+      `${formatPath(path)} must be an array of unique non-empty plugin identifiers.`,
+    );
+  }
+}
+
+function isValidManagedArrayShape(value) {
+  return Array.isArray(value) &&
+    value.every((entry) => typeof entry === "string" && entry.length > 0) &&
+    new Set(value).size === value.length;
 }
 
 function validateReceipt(receipt) {
@@ -1121,14 +1475,24 @@ function validateReceipt(receipt) {
       statusCode: 422,
     });
   }
+  if (
+    receipt.managedSurfaceVersion !== undefined &&
+    (!Number.isSafeInteger(receipt.managedSurfaceVersion) || receipt.managedSurfaceVersion < 1)
+  ) {
+    throw new OpenCodeIntegrationError("The integration receipt has an invalid managed surface version.", {
+      code: "RECEIPT_INVALID",
+      statusCode: 422,
+    });
+  }
   const seenPaths = new Set();
   for (const entry of receipt.entries) {
+    const kind = entry?.kind ?? "exact";
     if (
       !isPlainObject(entry) ||
       !Array.isArray(entry.path) ||
-      entry.path.length !== 2 ||
-      !OWNED_ROOTS.includes(entry.path[0]) ||
-      typeof entry.path[1] !== "string" ||
+      ![1, 2].includes(entry.path.length) ||
+      entry.path.some((segment) => typeof segment !== "string") ||
+      !["exact", "array-item"].includes(kind) ||
       !("value" in entry)
     ) {
       throw new OpenCodeIntegrationError("The integration receipt contains an invalid managed entry.", {
@@ -1143,6 +1507,26 @@ function validateReceipt(receipt) {
         statusCode: 422,
       });
     }
+    const pluginEntry = key === pathKey(["plugin"]);
+    const defaultEntry = key === pathKey(["default_agent"]);
+    if (
+      (pluginEntry && (
+        kind !== "array-item" ||
+        typeof entry.value !== "string"
+      )) ||
+      (defaultEntry && (kind !== "exact" || entry.value !== "omc-router")) ||
+      (!pluginEntry && !defaultEntry && (
+        kind !== "exact" ||
+        entry.path.length !== 2 ||
+        !OWNED_ROOTS.includes(entry.path[0])
+      ))
+    ) {
+      throw new OpenCodeIntegrationError("The integration receipt contains an invalid managed entry.", {
+        code: "RECEIPT_INVALID",
+        statusCode: 422,
+      });
+    }
+    if (pluginEntry) assertCanonicalFileUrl(entry.value);
     seenPaths.add(key);
     assertSafeJson(entry.value, `receipt ${formatPath(entry.path)}`);
   }
@@ -1153,6 +1537,17 @@ function validateReceipt(receipt) {
       receipt.createdContainers.some((root) => !OWNED_ROOTS.includes(root)))
   ) {
     throw new OpenCodeIntegrationError("The integration receipt contains invalid created containers.", {
+      code: "RECEIPT_INVALID",
+      statusCode: 422,
+    });
+  }
+  if (
+    receipt.createdCollections !== undefined &&
+    (!Array.isArray(receipt.createdCollections) ||
+      new Set(receipt.createdCollections).size !== receipt.createdCollections.length ||
+      receipt.createdCollections.some((root) => root !== "plugin"))
+  ) {
+    throw new OpenCodeIntegrationError("The integration receipt contains invalid created collections.", {
       code: "RECEIPT_INVALID",
       statusCode: 422,
     });
@@ -1321,6 +1716,11 @@ function safeErrorMessage(error) {
 function safeCommandErrorMessage(error) {
   if (error instanceof OpenCodeIntegrationError) return error.message;
   return "The configured Model Control MCP command is missing or inaccessible.";
+}
+
+function safePluginErrorMessage(error) {
+  if (error instanceof OpenCodeIntegrationError) return error.message;
+  return "The configured Model Control routing plugin is missing or inaccessible.";
 }
 
 async function pathExists(path) {

@@ -24,21 +24,27 @@ test("UI client uses every required API route and mutation protection header", a
     "/api/opencode/integration/install",
     "/api/opencode/integration/uninstall",
     "/api/benchmarks/summary",
+    "/api/runtime-qualification",
+    "/api/runtime-qualification/run",
     "/api/usage",
   ]) {
     assert.match(api, new RegExp(route.replaceAll("/", "\\/")));
   }
   assert.match(api, /"X-OMC-Request": "1"/);
+  assert.match(api, /"X-OMC-Session": mutationSession/);
+  assert.match(api, /captureMutationSession\(\)/);
+  assert.match(api, /refreshCatalog[\s\S]*body: "\{\}"/);
   assert.match(api, /errorBody\.message/);
 });
 
 test("core interactions expose semantic labels and unsaved-state protection", async () => {
-  const [app, table, routeTester, config, roles, usage, shell] = await Promise.all([
+  const [app, table, routeTester, config, roles, benchmarks, usage, shell] = await Promise.all([
     source("src/ui/App.tsx"),
     source("src/ui/components/ModelTable.tsx"),
     source("src/ui/components/RouteTester.tsx"),
     source("src/ui/components/ConfigPanel.tsx"),
     source("src/ui/components/RoleAssignments.tsx"),
+    source("src/ui/components/BenchmarkPanel.tsx"),
     source("src/ui/components/UsagePanel.tsx"),
     source("src/ui/components/AppShell.tsx"),
   ]);
@@ -52,6 +58,8 @@ test("core interactions expose semantic labels and unsaved-state protection", as
   assert.match(routeTester, /\["text", "image", "audio", "video", "pdf"\]/);
   assert.match(routeTester, /not generate new stock images or image files/i);
   assert.match(routeTester, /integrationWarning/);
+  assert.match(routeTester, /Review repair/);
+  assert.match(routeTester, /Up to 1 pass after review/);
   assert.match(app, /Update available models/);
   assert.match(app, /connectionChanged = result\.changed === true/);
   assert.match(app, /catalogRefreshNotice\(\{ connectionChanged \}\)/);
@@ -64,10 +72,20 @@ test("core interactions expose semantic labels and unsaved-state protection", as
   assert.match(config, /Open config/);
   assert.match(config, /Reveal in folder/);
   assert.match(config, /Generated integration/);
+  assert.match(config, /previewRequestId/);
+  assert.match(config, /previewAllowed/);
   assert.match(config, /Direct edits to Model Control-owned entries/);
   assert.match(roles, />Free<\/button>/);
   assert.match(roles, />Paid<\/button>/);
   assert.match(roles, /Provider charges may apply/);
+  assert.match(roles, /Review repair passes/);
+  assert.match(roles, /does not switch to another model/);
+  assert.match(benchmarks, /Manual runtime access check/);
+  assert.match(benchmarks, /not a quality benchmark/i);
+  assert.match(benchmarks, /may consume quota or incur charges/);
+  assert.match(benchmarks, /provider processes the fixed synthetic prompt/);
+  assert.match(benchmarks, /Never automatic/);
+  assert.match(benchmarks, /type="checkbox"/);
   assert.match(shell, /label: "Usage"/);
   assert.match(shell, /hashchange/);
   assert.match(shell, /aria-current/);

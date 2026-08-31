@@ -48,13 +48,8 @@ test("routing fixtures produce stable role and model assignments", () => {
     assert.ok(
       first.assignments.every(
         (assignment) =>
-          assignment.fallbackModelId === null ||
-          typeof assignment.fallbackModelId === "string",
+          assignment.fallbackModelId === null && assignment.fallbackCount === 0,
       ),
-      fixture.id,
-    );
-    assert.ok(
-      first.assignments.every((assignment) => assignment.fallbackCount <= 1),
       fixture.id,
     );
   }
@@ -230,6 +225,11 @@ test("non-text code work is orchestrated across code and vision specialists", ()
       .modalities,
     ["text", "image"],
   );
+  assert.equal(
+    plan.assignments.find((assignment) => assignment.role === "vision-worker")
+      .access,
+    "read",
+  );
 });
 
 test("automatic selection is stable across equivalent modality ordering", () => {
@@ -270,7 +270,7 @@ test("a task-specific modality mismatch fails an explicit assignment closed", ()
   );
 });
 
-test("each assignment has at most one distinct fallback and can disable it", () => {
+test("the legacy repair-pass setting never advertises an alternate-model fallback", () => {
   const catalog = loadModelCatalog();
   const settings = createDefaultSettings(catalog);
   const task = {
@@ -281,23 +281,24 @@ test("each assignment has at most one distinct fallback and can disable it", () 
     delegationDepth: 0,
   };
 
-  const withFallback = planRoute({ task, catalog, settings });
+  const withRepairPass = planRoute({ task, catalog, settings });
   assert.ok(
-    withFallback.assignments.every(
-      (assignment) =>
-        assignment.fallbackCount <= 1 &&
-        assignment.fallbackModelId !== assignment.modelId,
-    ),
-  );
-
-  settings.maxFallbacksPerAssignment = 0;
-  const withoutFallback = planRoute({ task, catalog, settings });
-  assert.ok(
-    withoutFallback.assignments.every(
+    withRepairPass.assignments.every(
       (assignment) =>
         assignment.fallbackCount === 0 && assignment.fallbackModelId === null,
     ),
   );
+  assert.equal(withRepairPass.policy.maxFallbacksPerAssignment, 1);
+
+  settings.maxFallbacksPerAssignment = 0;
+  const withoutRepairPass = planRoute({ task, catalog, settings });
+  assert.ok(
+    withoutRepairPass.assignments.every(
+      (assignment) =>
+        assignment.fallbackCount === 0 && assignment.fallbackModelId === null,
+    ),
+  );
+  assert.equal(withoutRepairPass.policy.maxFallbacksPerAssignment, 0);
 });
 
 test("review-required specialist work includes an independent reviewer", () => {
@@ -437,7 +438,8 @@ test("equal-evidence and equal-cost candidates use role score then stable ID", (
   });
   const worker = plan.assignments.find(({ role }) => role === "code-worker");
   assert.equal(worker.modelId, "provider/zeta");
-  assert.equal(worker.fallbackModelId, "provider/alpha");
+  assert.equal(worker.fallbackModelId, null);
+  assert.equal(worker.fallbackCount, 0);
 });
 
 test("known-cost routing errors stay cost-neutral when no model qualifies", () => {

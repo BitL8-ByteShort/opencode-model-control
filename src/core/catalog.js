@@ -304,11 +304,12 @@ export function modelSupports({ model, role, modalities, access }) {
   if (!MODEL_ROLES.includes(role) || model?.roles?.[role] === undefined) return false;
   if (role === "orchestrator" && model.canOrchestrate !== true) return false;
   if (
-    (role === "orchestrator" || role === "code-worker") &&
+    (role === "orchestrator" || role === "code-worker" || role === "vision-worker") &&
     model.toolCall === false
   ) {
     return false;
   }
+  if (role === "vision-worker" && model.toolCall !== true) return false;
   if (!model.access?.includes(access)) return false;
   if (!modalities.every((modality) => model.modalities?.input?.includes(modality))) {
     return false;

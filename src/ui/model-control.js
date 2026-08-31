@@ -108,7 +108,21 @@ export function evidenceMeta(evidence) {
     return { key: "provisional", label: "Unbenchmarked role", tone: "warning" };
   }
   if (["capability-only", "capability_verified", "capability-verified"].includes(normalized)) {
-    return { key: "provisional", label: "Capability verified; benchmark pending", tone: "warning" };
+    return { key: "provisional", label: "Reported capability; runtime unverified", tone: "warning" };
+  }
+  if (normalized === "runtime-access-only") {
+    return {
+      key: "provisional",
+      label: evidence?.label ?? "Runtime access checked; role benchmark pending",
+      tone: "warning",
+    };
+  }
+  if (normalized === "runtime-access-failed") {
+    return {
+      key: "provisional",
+      label: evidence?.label ?? "Runtime access not confirmed; role benchmark pending",
+      tone: "warning",
+    };
   }
   return { key: "unverified", label: "Evidence: unverified", tone: "neutral" };
 }
@@ -167,6 +181,8 @@ export function normalizeSettings(settings = {}, catalog = []) {
     },
     maxDelegationDepth: clampInteger(settings.maxDelegationDepth, 1, 0, 1),
     maxFallbacksPerAssignment: clampInteger(settings.maxFallbacksPerAssignment, 1, 0, 1),
+    makeRouterDefault:
+      typeof settings.makeRouterDefault === "boolean" ? settings.makeRouterDefault : true,
   };
 }
 
@@ -200,6 +216,7 @@ export function settingsForApi(settings) {
     costPolicy: settings.costPolicy === "known-cost" ? "known-cost" : "free-only",
     maxDelegationDepth: clampInteger(settings.maxDelegationDepth, 1, 0, 1),
     maxFallbacksPerAssignment: clampInteger(settings.maxFallbacksPerAssignment, 1, 0, 1),
+    makeRouterDefault: settings.makeRouterDefault !== false,
     modelControls: Object.fromEntries(
       Object.entries(settings.modelControls ?? {}).map(([id, control]) => [
         id,
@@ -316,16 +333,15 @@ export function routePlanView(result) {
     return {
       primary: result?.primary ?? null,
       workers: Array.isArray(result?.workers) ? result.workers : [],
-      fallbacks: Array.isArray(result?.fallback)
-        ? result.fallback
-        : result?.fallback
-          ? [result.fallback]
-          : [],
+      repairPasses: 0,
     };
   }
 
   const primaryAssignment =
     assignments.find((assignment) => assignment?.role === "orchestrator") ?? assignments[0];
+  const includesReviewedCode =
+    assignments.some((assignment) => assignment?.role === "code-worker") &&
+    assignments.some((assignment) => assignment?.role === "reviewer");
   return {
     primary: primaryAssignment?.modelId ?? null,
     workers: assignments
@@ -334,9 +350,10 @@ export function routePlanView(result) {
         modelId: assignment.modelId,
         role: assignment.role,
       })),
-    fallbacks: assignments
-      .map((assignment) => assignment?.fallbackModelId)
-      .filter((modelId) => typeof modelId === "string" && modelId.length > 0),
+    repairPasses:
+      includesReviewedCode && result?.policy?.maxFallbacksPerAssignment === 1
+        ? 1
+        : 0,
   };
 }
 

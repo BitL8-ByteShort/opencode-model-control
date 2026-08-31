@@ -10,6 +10,7 @@
       "enabledByDefault": true,
       "available": true,
       "contextWindowTokens": 200000,
+      "toolCall": true,
       "free": {
         "verified": true,
         "inputUsdPerMillion": 0,
@@ -61,6 +62,7 @@
       "enabledByDefault": true,
       "available": true,
       "contextWindowTokens": 200000,
+      "toolCall": true,
       "free": {
         "verified": true,
         "inputUsdPerMillion": 0,
@@ -87,6 +89,7 @@
       "enabledByDefault": false,
       "available": true,
       "contextWindowTokens": 1048576,
+      "toolCall": true,
       "free": {
         "verified": true,
         "inputUsdPerMillion": 0,

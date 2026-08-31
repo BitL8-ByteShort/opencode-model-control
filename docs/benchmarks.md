@@ -13,6 +13,14 @@ The benchmark answers four narrower questions:
 
 It does not establish universal model quality or predict future provider behavior.
 
+## Runtime access is a separate check
+
+The control panel's **Run one runtime check** button is not this benchmark. It starts one bounded, isolated, plugin-free OpenCode run with a fixed text-only sentinel for one selected model after the user explicitly confirms the provider-call and possible cost/data boundaries. OpenCode may retry retryable provider failures inside that run, so it can make more than one provider attempt. Each attempt can consume quota, incur cost, or be retained under OpenCode's and the provider's terms. The check never runs during startup, catalog refresh, Save, Connect, or Reload summary.
+
+A pass means only that the exact model returned the expected synthetic response during that bounded run. It does not demonstrate task quality, role fitness, reliability, modality support, verified-free pricing, or future access. The check stores redacted outcome metadata and discards raw output; it cannot update a role's benchmark status or satisfy any promotion gate below. Its local isolation guard inspects credential-type metadata so unsafe remote-configuration credentials fail closed, but it does not extract, log, or transmit secret material.
+
+There is intentionally no one-click full-quality benchmark in the current panel. **Reload summary** reads committed or otherwise published benchmark evidence; it does not invoke models. A **benchmark pending** label remains until a maintainer runs the versioned corpus, publishes the required evidence, and deliberately promotes the qualifying result.
+
 ## Version every run
 
 Record, in machine-readable form:
@@ -23,6 +31,7 @@ Record, in machine-readable form:
 - Exact OpenCode version.
 - Provider-qualified model IDs and reported model metadata.
 - Relevant role settings, prompts, delegation limits, and randomness controls.
+- Whether the bundled media plugin was installed, plus the recorded route receipt for attachment cases.
 - Cost preference, cost policy, and pricing-evidence source.
 - Number of repetitions, timeout, retry policy, and concurrency.
 - Provider errors, unavailable models, rate limits, and malformed responses.
@@ -63,7 +72,8 @@ Report at least:
 - Unsupported claims or fabricated test evidence.
 - Median and 95th-percentile time to first response and end-to-end latency.
 - Timeout, transport-error, malformed-response, and rate-limit rates.
-- Delegation count, fallback count, and depth-limit violations.
+- Delegation count, review-repair-pass count, and depth-limit violations.
+- Code-worker, reviewer, and repair-sequence compliance, including second-cycle violations.
 - Input/output token counts when the provider reports them.
 - Human-review agreement and adjudication count.
 
@@ -79,6 +89,7 @@ A role assignment can move from provisional to qualified only when:
 - Its confidence interval and sample size are published.
 - It meets the role's predeclared quality and critical-failure thresholds.
 - It does not materially regress the documented latency and reliability budget.
+- A runtime-access check, catalog refresh, or successful connection is not substituted for corpus evidence.
 - The run is reproducible from committed fixtures and instructions.
 
 No benchmark has been promoted merely by adding this methodology. Until a qualifying run is published, the UI and docs must continue to say provisional, capability-only, or unverified.

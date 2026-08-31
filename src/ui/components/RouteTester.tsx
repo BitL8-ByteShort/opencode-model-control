@@ -22,7 +22,7 @@ export function RouteTester({ catalog }: { catalog: CatalogModel[] }) {
     () => routePlanView(result) as {
       primary: unknown;
       workers: Array<{ modelId?: string; role?: string }>;
-      fallbacks: unknown[];
+      repairPasses: number;
     },
     [result],
   );
@@ -83,7 +83,7 @@ export function RouteTester({ catalog }: { catalog: CatalogModel[] }) {
             <dl>
               <div><dt>Primary</dt><dd>{displayModel(catalog, plan.primary)}</dd></div>
               <div><dt>Workers</dt><dd>{plan.workers.length ? plan.workers.map((worker) => `${worker.role ? `${roleLabel(worker.role)}: ` : ""}${displayModel(catalog, worker)}`).join(", ") : "Direct — no worker"}</dd></div>
-              <div><dt>Fallback</dt><dd>{plan.fallbacks.length ? plan.fallbacks.map((item) => displayModel(catalog, item)).join(", ") : "None"}</dd></div>
+              <div><dt>Review repair</dt><dd>{plan.repairPasses === 1 ? "Up to 1 pass after review" : "None"}</dd></div>
             </dl>
             {result.reasons?.length ? <ul className="reason-list">{result.reasons.map((reason) => <li key={reason}>{reason}</li>)}</ul> : null}
             {result.integrationWarning ? <p className="inline-alert inline-alert--warning">{result.integrationWarning}</p> : null}

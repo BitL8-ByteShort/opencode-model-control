@@ -26,6 +26,7 @@ test("default settings are strict, bounded, complete, and deterministic", () => 
   });
   assert.equal(settings.maxDelegationDepth, 1);
   assert.equal(settings.maxFallbacksPerAssignment, 1);
+  assert.equal(settings.makeRouterDefault, true);
   assert.equal(Object.keys(settings.modelControls).length, 6);
   assert.equal(
     settings.modelControls["opencode/muse-spark-1.2-contributor-free"].enabled,
@@ -85,7 +86,7 @@ test("schema v1 free-only settings migrate to explicit v2 cost controls", () => 
   assert.equal(migrated.costPolicy, "free-only");
 });
 
-test("settings reject malformed costs, excessive fallback, recursion, and unknown models", () => {
+test("settings reject malformed costs, excessive repair passes, recursion, and unknown models", () => {
   const catalog = loadModelCatalog();
   const base = createDefaultSettings(catalog);
 
@@ -108,6 +109,12 @@ test("settings reject malformed costs, excessive fallback, recursion, and unknow
   assert.throws(
     () => validateSettings({ ...base, maxDelegationDepth: 2 }, catalog),
     (error) => error.code === "INVALID_SETTINGS",
+  );
+  assert.throws(
+    () => validateSettings({ ...base, makeRouterDefault: "yes" }, catalog),
+    (error) =>
+      error.code === "INVALID_SETTINGS" &&
+      /makeRouterDefault must be true or false/.test(error.message),
   );
   assert.throws(
     () =>

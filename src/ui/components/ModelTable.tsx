@@ -1,4 +1,4 @@
-import type { CatalogModel, RouterSettings } from "../types";
+import type { CatalogModel, RouterSettings, RuntimeQualificationSummary } from "../types";
 import {
   catalogSummary,
   evidenceMeta,
@@ -20,10 +20,12 @@ function modelTags(model: CatalogModel) {
 
 export function ModelTable({
   catalog,
+  qualification,
   settings,
   onToggle,
 }: {
   catalog: CatalogModel[];
+  qualification: RuntimeQualificationSummary | null;
   settings: RouterSettings;
   onToggle: (modelId: string, enabled: boolean) => void;
 }) {
@@ -54,7 +56,17 @@ export function ModelTable({
           <tbody>
             {catalog.map((model) => {
               const available = isModelAvailable(model);
-              const evidence = evidenceMeta(model.evidence ?? (model.provisional === true ? true : null));
+              const runtimeResult = qualification?.results.find(({ modelId }) => modelId === model.id);
+              const evidence = evidenceMeta(runtimeResult
+                ? {
+                    status: runtimeResult.status === "passed"
+                      ? "runtime-access-only"
+                      : "runtime-access-failed",
+                    label: runtimeResult.status === "passed"
+                      ? "Runtime access checked; role benchmark pending"
+                      : "Runtime access not confirmed; role benchmark pending",
+                  }
+                : model.evidence ?? (model.provisional === true ? true : null));
               const checked = Boolean(settings.modelControls[model.id]?.enabled);
               const costClass = modelCostClass(model);
               const canEnable = isModelCostAllowed(model, settings) && available;

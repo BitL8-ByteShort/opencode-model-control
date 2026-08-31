@@ -2,8 +2,8 @@ import { McpServer } from "@modelcontextprotocol/server";
 import * as z from "zod/v4";
 
 import { ControlService } from "../server/service.js";
+import { PACKAGE_VERSION } from "../version.js";
 
-const MODEL_CONTROL_VERSION = "0.1.0";
 const MODALITIES = ["text", "image", "audio", "video", "pdf"];
 
 function stableError(error) {
@@ -94,7 +94,7 @@ function compactStatus(state) {
 export async function createModelControlMcpServer({ service } = {}) {
   const controlService = service ?? (await new ControlService().initialize());
   const server = new McpServer(
-    { name: "opencode-model-control", version: MODEL_CONTROL_VERSION },
+    { name: "opencode-model-control", version: PACKAGE_VERSION },
     {
       instructions:
         "Read-only policy-controlled model routing. Call route_task before delegating nontrivial work. Follow the returned agentId exactly, stop when route is direct, and never let a specialist delegate recursively.",

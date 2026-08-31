@@ -20,8 +20,11 @@ Usage:
   opencode-model-control disconnect --yes [--json]
 
 Environment:
-  OMC_PORT         Local loopback port (default: 47821)
-  OMC_CONFIG_DIR   Override the private settings directory
+  OMC_PORT                  Local loopback port (default: 47821)
+  OMC_CONFIG_DIR            Override the private settings directory; use the same
+                            value for the panel, MCP, and OpenCode plugin process
+  OMC_OPENCODE_CONFIG_PATH  Advanced/testing override for the exact OpenCode
+                            config file managed by Connect and Disconnect
 
 The panel starts without editing OpenCode. Connect and disconnect require explicit
 confirmation and use a mode-0600 backup plus an ownership receipt.

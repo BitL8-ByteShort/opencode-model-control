@@ -1,6 +1,8 @@
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { extname, join, normalize, resolve, sep } from "node:path";
 
 export const MAX_JSON_BYTES = 64 * 1024;
+export const MUTATION_SESSION_QUERY = "omc_session";
 
 const MIME_TYPES = new Map([
   [".css", "text/css; charset=utf-8"],
@@ -70,7 +72,24 @@ export async function readJson(request) {
   }
 }
 
-export function assertTrustedMutation(request) {
+export function createMutationSessionSecret() {
+  return randomBytes(32).toString("base64url");
+}
+
+export function mutationSessionLaunchUrl(baseUrl, sessionSecret) {
+  const url = new URL(baseUrl);
+  url.searchParams.set(MUTATION_SESSION_QUERY, sessionSecret);
+  return url.href;
+}
+
+function sessionSecretsMatch(received, expected) {
+  if (typeof received !== "string" || typeof expected !== "string" || !expected) return false;
+  const receivedDigest = createHash("sha256").update(received).digest();
+  const expectedDigest = createHash("sha256").update(expected).digest();
+  return timingSafeEqual(receivedDigest, expectedDigest);
+}
+
+export function assertTrustedMutation(request, sessionSecret) {
   if (request.headers["x-omc-request"] !== "1") {
     throw Object.assign(new Error("Missing local request marker."), {
       code: "REQUEST_MARKER_REQUIRED",
@@ -79,13 +98,24 @@ export function assertTrustedMutation(request) {
   }
 
   const origin = request.headers.origin;
-  if (!origin) return;
   const host = request.headers.host;
-  if (!host || !new Set([`http://${host}`, `https://${host}`]).has(origin)) {
+  if (!origin || !host || !new Set([`http://${host}`, `https://${host}`]).has(origin)) {
     throw Object.assign(new Error("Cross-origin changes are not allowed."), {
       code: "CROSS_ORIGIN_REJECTED",
       statusCode: 403,
     });
+  }
+
+  if (!sessionSecretsMatch(request.headers["x-omc-session"], sessionSecret)) {
+    throw Object.assign(
+      new Error(
+        "This browser tab is read-only. Relaunch OpenCode Model Control with the opencode-model-control command to make changes.",
+      ),
+      {
+        code: "SESSION_AUTHORIZATION_REQUIRED",
+        statusCode: 403,
+      },
+    );
   }
 }
 

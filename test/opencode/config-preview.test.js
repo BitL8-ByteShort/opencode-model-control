@@ -47,15 +47,30 @@ test("standalone defaults build a Big Pickle primary and the current specialist 
   for (const [role, model] of Object.entries(EXPECTED_ROLE_MODELS)) {
     assert.equal(config.agent[`omc-${role}`].mode, "subagent");
     assert.equal(config.agent[`omc-${role}`].model, model);
-    assert.deepEqual(config.agent[`omc-${role}`].tools, {
-      "model-control_*": false,
-    });
-    assert.equal(
-      config.agent[`omc-${role}`].permission["model-control_*"],
-      "deny",
-    );
-    assert.equal(config.agent[`omc-${role}`].permission.task, "deny");
   }
+
+  assert.deepEqual(config.agent["omc-code-worker"].tools, {
+    "model-control_*": false,
+  });
+  assert.equal(config.agent["omc-code-worker"].permission.task, "deny");
+
+  assert.deepEqual(config.agent["omc-vision-worker"].tools, { "*": false });
+  assert.deepEqual(config.agent["omc-vision-worker"].permission, { "*": "deny" });
+
+  assert.deepEqual(config.agent["omc-reviewer"].tools, {
+    "*": false,
+    read: true,
+    glob: true,
+    grep: true,
+    list: true,
+    lsp: true,
+  });
+  for (const tool of ["bash", "edit", "patch", "write", "task"]) {
+    assert.notEqual(config.agent["omc-reviewer"].tools[tool], true);
+  }
+  assert.equal(config.agent["omc-reviewer"].permission["*"], "deny");
+  assert.equal(config.agent["omc-reviewer"].permission.read, "allow");
+  assert.equal(config.agent["omc-reviewer"].permission.task, "deny");
 });
 
 test("accepts the public catalog and settings contract", () => {
@@ -294,6 +309,24 @@ test("rejects explicit models that do not declare or satisfy the assigned role",
     /not compatible with vision-worker/,
   );
 
+  const noToolVisionCatalog = DEFAULT_FREE_CATALOG.map((entry) =>
+    entry.id === "opencode/mimo-v2.5-free"
+      ? { ...entry, toolCall: false }
+      : entry,
+  );
+  assert.throws(
+    () =>
+      buildOpenCodeConfig({
+        catalog: noToolVisionCatalog,
+        settings: {
+          roleAssignments: {
+            "vision-worker": "opencode/mimo-v2.5-free",
+          },
+        },
+      }),
+    /not compatible with vision-worker/,
+  );
+
   const zeroScoreCatalog = DEFAULT_FREE_CATALOG.map((entry) =>
     entry.id === "opencode/ling-3.0-flash-fin-free"
       ? { ...entry, roles: { ...entry.roles, "code-worker": 0 } }
@@ -451,19 +484,24 @@ test("fails closed when the local MCP bridge name is already configured differen
   );
 });
 
-test("states the stock first-call and attachment limitations", () => {
-  const preview = previewOpenCodeConfig();
-  const warnings = preview.warnings.join(" ");
-
-  assert.match(warnings, /MCP cannot choose the first model/i);
-  assert.match(warnings, /image attachment/i);
-  assert.match(warnings, /directly/i);
-});
-
 test("the primary prompt consults the live route and stops on direct", () => {
   const prompt = buildOpenCodeConfig().agent["omc-router"].prompt;
 
   assert.match(prompt, /model-control_route_task/);
   assert.match(prompt, /route is direct.*do not delegate/is);
   assert.match(prompt, /never recurse/i);
+  assert.match(prompt, /without waiting for the user to request delegation/i);
+  assert.match(prompt, /one independent review/i);
+  assert.match(prompt, /one bounded repair task/i);
+  assert.match(prompt, /local pre-call router/i);
+});
+
+test("the primary prompt describes the legacy setting as a review repair pass", () => {
+  const prompt = buildOpenCodeConfig({
+    settings: { maxFallbacksPerAssignment: 0 },
+  }).agent["omc-router"].prompt;
+
+  assert.match(prompt, /review repair passes are disabled/i);
+  assert.doesNotMatch(prompt, /fallback attempt/i);
+  assert.doesNotMatch(prompt, /send one bounded repair task/i);
 });

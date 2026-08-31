@@ -70,10 +70,16 @@ test("live zero-cost catalog produces a bounded explainable route", async (t) =>
   const service = await isolatedService(t, liveDiscovery());
   const result = service.route({ task: "Implement API endpoint authentication", modality: "text" });
 
-  assert.equal(result.route, "code-worker");
+  assert.equal(result.route, "orchestrator");
   assert.equal(result.assignments[0].role, "orchestrator");
   assert.equal(result.assignments[1].role, "code-worker");
-  assert.ok(result.assignments.every(({ fallbackCount }) => fallbackCount <= 1));
+  assert.equal(result.assignments[2].role, "reviewer");
+  assert.ok(
+    result.assignments.every(
+      ({ fallbackCount, fallbackModelId }) =>
+        fallbackCount === 0 && fallbackModelId === null,
+    ),
+  );
   assert.equal(result.integrationWarning, null);
 });
 
@@ -87,12 +93,46 @@ test("disabling an assigned model atomically degrades its role to auto", async (
   assert.equal(state.settings.modelControls["opencode/big-pickle"].enabled, false);
 });
 
-test("non-text route previews state the stock OpenCode first-call limitation", async (t) => {
+test("non-text route previews state the installed plugin boundary", async (t) => {
   const service = await isolatedService(t, liveDiscovery());
   const result = service.route({ task: "Describe this screenshot", modality: "image" });
 
   assert.equal(result.route, "vision-worker");
-  assert.match(result.integrationWarning, /selects the primary model before delegation/iu);
+  assert.match(result.integrationWarning, /installed Model Control plugin/iu);
+});
+
+test("image-assisted implementation plans bounded vision, code, and review work", async (t) => {
+  const service = await isolatedService(t, liveDiscovery());
+  const result = service.route({
+    task: "Implement the UI changes shown in this screenshot",
+    modality: "image",
+  });
+
+  assert.equal(result.task.kind, "code");
+  assert.equal(result.task.access, "write");
+  assert.equal(result.task.requiresReview, true);
+  assert.deepEqual(result.task.modalities, ["text", "image"]);
+  assert.equal(result.route, "orchestrator");
+  assert.deepEqual(
+    result.assignments.map(({ role }) => role),
+    ["orchestrator", "code-worker", "vision-worker", "reviewer"],
+  );
+});
+
+test("pure image inspection plans read-only vision and review work", async (t) => {
+  const service = await isolatedService(t, liveDiscovery());
+  const result = service.route({
+    task: "Inspect this screenshot for accessibility issues",
+    modality: "image",
+  });
+
+  assert.equal(result.task.kind, "vision");
+  assert.equal(result.task.access, "read");
+  assert.equal(result.route, "orchestrator");
+  assert.deepEqual(
+    result.assignments.map(({ role }) => role),
+    ["orchestrator", "vision-worker", "reviewer"],
+  );
 });
 
 test("usage is read on demand with the requested fixed window", async (t) => {
@@ -106,6 +146,29 @@ test("usage is read on demand with the requested fixed window", async (t) => {
   const usage = await service.getUsage("7d");
   assert.deepEqual(received, { window: "7d" });
   assert.equal(usage.window, "7d");
+});
+
+test("connecting persists the validated plugin policy even when defaults were unchanged", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "omc-service-connect-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const settingsPath = join(directory, "settings.json");
+  let receivedSettings;
+  const service = await new ControlService({
+    settingsPath,
+    discovery: liveDiscovery(),
+    integrationInstaller: {
+      async install({ settings }) {
+        receivedSettings = settings;
+        return { installed: true, managed: true, healthy: true, message: "Connected" };
+      },
+    },
+  }).initialize();
+
+  await service.installOpenCodeIntegration();
+
+  const persisted = JSON.parse(await readFile(settingsPath, "utf8"));
+  assert.equal(persisted.makeRouterDefault, true);
+  assert.deepEqual(persisted, receivedSettings);
 });
 
 test("a complete catalog snapshot preserves enabled plugin models across a partial restart", async (t) => {

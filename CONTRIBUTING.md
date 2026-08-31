@@ -4,7 +4,7 @@ Thank you for helping improve OpenCode Model Control. Contributions should keep 
 
 ## Development setup
 
-Install Node.js `^20.19.0` or `>=22.12.0`, npm, and the project dependencies:
+Install Node.js `>=22.12.0` (prefer a currently supported Node.js 22 or 24 LTS release), npm, and the project dependencies:
 
 ```sh
 npm ci

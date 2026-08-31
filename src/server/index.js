@@ -1,5 +1,5 @@
 import { createControlServer } from "./app.js";
-import { launchBrowser } from "./browser.js";
+import { announceControlPanel } from "./browser.js";
 
 function readPort(value) {
   const port = Number.parseInt(value ?? "47821", 10);
@@ -15,18 +15,23 @@ const host = "127.0.0.1";
 const app = await createControlServer({ development });
 
 app.server.listen(port, host, () => {
-  const url = `http://${host}:${port}`;
-  process.stdout.write(`OpenCode Model Control: ${url}\n`);
-  if (process.env.OMC_OPEN_BROWSER === "1") launchBrowser(url);
+  const publicUrl = `http://${host}:${port}`;
+  announceControlPanel({
+    publicUrl,
+    launchUrl: app.launchUrl(publicUrl),
+    open: process.env.OMC_OPEN_BROWSER === "1",
+    interactive: Boolean(process.stdout.isTTY),
+  });
 });
 
-app.server.once("error", (error) => {
+app.server.once("error", async (error) => {
   if (error?.code === "EADDRINUSE") {
     process.stderr.write(`Port ${port} is already in use. Set OMC_PORT to another local port.\n`);
   } else {
     process.stderr.write("The local control service could not start.\n");
   }
   process.exitCode = 1;
+  await app.close();
 });
 
 async function shutdown(signal) {

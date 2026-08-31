@@ -16,6 +16,7 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { isAbsolute, join } from "node:path";
+import { pathToFileURL } from "node:url";
 
 import {
   OpenCodeIntegrationInstaller,
@@ -30,6 +31,7 @@ async function fixture(t, {
   mode = 0o640,
   nodePath,
   cliPath,
+  pluginPath,
   verify = async ({ source: proposed }) => {
     parseJsoncDocument(proposed);
     return { verified: true };
@@ -43,6 +45,8 @@ async function fixture(t, {
   t.after(() => rm(directory, { recursive: true, force: true }));
   const configPath = join(directory, "opencode.jsonc");
   const receiptPath = join(directory, "private", "receipt.json");
+  const resolvedPluginPath = pluginPath ?? join(directory, "omc-plugin.js");
+  if (pluginPath === undefined) await writeFile(resolvedPluginPath, "export default {}\n");
   if (source !== undefined) await writeFile(configPath, source, { mode });
   let sequence = 0;
   const installer = new OpenCodeIntegrationInstaller({
@@ -52,6 +56,7 @@ async function fixture(t, {
     id: () => `test-${++sequence}`,
     nodePath,
     cliPath,
+    pluginPath: resolvedPluginPath,
     verify,
     verifyCommand,
     beforeConfigWrite,
@@ -205,8 +210,16 @@ test("installs into JSONC without removing comments or unrelated settings", asyn
   assert.ok(installed.mcp["model-control"].command.slice(0, 2).every(isAbsolute));
   assert.equal(installed.tools["model-control_*"], false);
   assert.equal(installed.agent["omc-router"].mode, "primary");
+  assert.equal(installed.default_agent, "omc-router");
+  assert.equal(installed.plugin.length, 1);
+  assert.match(installed.plugin[0], /^file:\/\//);
   assert.equal(receipt.product, "opencode-model-control");
   assert.equal(receipt.configPath, configPath);
+  assert.ok(receipt.entries.some(({ path }) => path.join(".") === "default_agent"));
+  assert.ok(receipt.entries.some(
+    ({ kind, path, value }) =>
+      kind === "array-item" && path.join(".") === "plugin" && value === installed.plugin[0],
+  ));
   assert.equal((await stat(configPath)).mode & 0o777, 0o640);
   assert.equal((await stat(receiptPath)).mode & 0o777, 0o600);
   assert.equal((await stat(receipt.backupPath)).mode & 0o777, 0o600);
@@ -316,6 +329,229 @@ test("uninstall removes only owned entries and retains user JSONC comments", asy
   await assert.rejects(lstat(receiptPath), (error) => error.code === "ENOENT");
 });
 
+test("preserves user plugins and an existing user-owned default agent", async (t) => {
+  const source = `${JSON.stringify({
+    plugin: ["existing-plugin", "file:///opt/example/plugin.js"],
+    default_agent: "user-primary",
+    theme: "system",
+  }, null, 2)}\n`;
+  const { configPath, installer, receiptPath } = await fixture(t, { source });
+
+  const installedResult = await installer.install();
+  const installed = parseJsoncDocument(await readFile(configPath, "utf8")).value;
+  const receipt = JSON.parse(await readFile(receiptPath, "utf8"));
+
+  assert.equal(installedResult.defaultAgent, "user-primary");
+  assert.equal(installedResult.defaultAgentManaged, false);
+  assert.equal(installedResult.defaultAgentPreserved, true);
+  assert.equal(installed.default_agent, "user-primary");
+  assert.deepEqual(installed.plugin.slice(0, 2), [
+    "existing-plugin",
+    "file:///opt/example/plugin.js",
+  ]);
+  assert.equal(installed.plugin.length, 3);
+  assert.equal(
+    receipt.entries.some(({ path }) => path.join(".") === "default_agent"),
+    false,
+  );
+
+  await installer.uninstall();
+  const disconnected = parseJsoncDocument(await readFile(configPath, "utf8")).value;
+  assert.deepEqual(disconnected.plugin, [
+    "existing-plugin",
+    "file:///opt/example/plugin.js",
+  ]);
+  assert.equal(disconnected.default_agent, "user-primary");
+  assert.equal(disconnected.theme, "system");
+});
+
+test("explicitly disabling the router default removes only a receipt-owned value", async (t) => {
+  const { configPath, installer, receiptPath } = await fixture(t, { source: "{}\n" });
+  await installer.install();
+  assert.equal(
+    parseJsoncDocument(await readFile(configPath, "utf8")).value.default_agent,
+    "omc-router",
+  );
+
+  const result = await installer.install({ settings: { makeRouterDefault: false } });
+  const updated = parseJsoncDocument(await readFile(configPath, "utf8")).value;
+  const receipt = JSON.parse(await readFile(receiptPath, "utf8"));
+
+  assert.equal(result.changed, true);
+  assert.equal(updated.default_agent, undefined);
+  assert.equal(
+    receipt.entries.some(({ path }) => path.join(".") === "default_agent"),
+    false,
+  );
+  assert.equal(updated.plugin.length, 1);
+});
+
+test("an existing v0.1.2 receipt upgrades without claiming user-owned values", async (t) => {
+  const { configPath, installer, receiptPath } = await fixture(t, { source: "{}\n" });
+  await installer.install({ settings: { makeRouterDefault: false } });
+
+  const legacyConfig = parseJsoncDocument(await readFile(configPath, "utf8")).value;
+  delete legacyConfig.plugin;
+  const legacyReceipt = JSON.parse(await readFile(receiptPath, "utf8"));
+  legacyReceipt.entries = legacyReceipt.entries.filter(
+    ({ path }) => !["plugin", "default_agent"].includes(path.join(".")),
+  );
+  delete legacyReceipt.managedSurfaceVersion;
+  delete legacyReceipt.createdCollections;
+  await writeFile(configPath, `${JSON.stringify(legacyConfig, null, 2)}\n`);
+  await writeFile(receiptPath, `${JSON.stringify(legacyReceipt, null, 2)}\n`, { mode: 0o600 });
+
+  const status = await installer.status();
+  assert.equal(status.installed, true);
+  assert.equal(status.managed, true);
+  assert.equal(status.healthy, false);
+  assert.equal(status.requiresAttention, true);
+  assert.equal(status.code, "UPDATE_REQUIRED");
+
+  const result = await installer.install();
+  const upgraded = parseJsoncDocument(await readFile(configPath, "utf8")).value;
+  const upgradedReceipt = JSON.parse(await readFile(receiptPath, "utf8"));
+
+  assert.equal(result.changed, true);
+  assert.equal(upgraded.default_agent, "omc-router");
+  assert.equal(upgraded.plugin.length, 1);
+  assert.ok(upgradedReceipt.entries.some(({ path }) => path.join(".") === "plugin"));
+  assert.ok(upgradedReceipt.entries.some(({ path }) => path.join(".") === "default_agent"));
+  assert.equal(upgradedReceipt.managedSurfaceVersion, 1);
+});
+
+test("a new package instance requires and safely applies an update from older valid package paths", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "omc-installer-package-upgrade-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const configPath = join(directory, "opencode.jsonc");
+  const receiptPath = join(directory, "receipt.json");
+  const oldPackage = join(directory, "old-package-cache");
+  const currentPackage = join(directory, "current-package-cache");
+  await mkdir(oldPackage);
+  await mkdir(currentPackage);
+
+  const oldNodePath = join(oldPackage, "node");
+  const oldCliPath = join(oldPackage, "opencode-model-control.js");
+  const oldPluginPath = join(oldPackage, "plugin.js");
+  const currentNodePath = join(currentPackage, "node");
+  const currentCliPath = join(currentPackage, "opencode-model-control.js");
+  const currentPluginPath = join(currentPackage, "plugin.js");
+  for (const path of [oldNodePath, currentNodePath]) {
+    await writeFile(path, "fake node\n", { mode: 0o700 });
+    await chmod(path, 0o700);
+  }
+  for (const path of [oldCliPath, oldPluginPath, currentCliPath, currentPluginPath]) {
+    await writeFile(path, "export default {}\n", { mode: 0o600 });
+  }
+  await writeFile(configPath, `${JSON.stringify({
+    plugin: ["user-plugin"],
+    default_agent: "user-primary",
+  }, null, 2)}\n`);
+
+  const installerOptions = {
+    configPath,
+    receiptPath,
+    verify: async () => ({ verified: true }),
+    verifyCommand: async () => ({ verified: true }),
+  };
+  const oldInstaller = new OpenCodeIntegrationInstaller({
+    ...installerOptions,
+    nodePath: oldNodePath,
+    cliPath: oldCliPath,
+    pluginPath: oldPluginPath,
+  });
+  await oldInstaller.install();
+  assert.equal((await oldInstaller.status()).healthy, true);
+
+  const currentInstaller = new OpenCodeIntegrationInstaller({
+    ...installerOptions,
+    nodePath: currentNodePath,
+    cliPath: currentCliPath,
+    pluginPath: currentPluginPath,
+  });
+  const before = await currentInstaller.status();
+  assert.equal(before.installed, true);
+  assert.equal(before.managed, true);
+  assert.equal(before.healthy, false);
+  assert.equal(before.requiresAttention, true);
+  assert.equal(before.code, "UPDATE_REQUIRED");
+
+  const result = await currentInstaller.install();
+  const updated = parseJsoncDocument(await readFile(configPath, "utf8")).value;
+  const receipt = JSON.parse(await readFile(receiptPath, "utf8"));
+  const oldPluginUrl = pathToFileURL(await realpath(oldPluginPath)).href;
+  const currentPluginUrl = pathToFileURL(await realpath(currentPluginPath)).href;
+  const currentCommand = [
+    await realpath(currentNodePath),
+    await realpath(currentCliPath),
+    "mcp",
+  ];
+
+  assert.equal(result.changed, true);
+  assert.equal(result.healthy, true);
+  assert.equal(result.code, "INSTALLED");
+  assert.deepEqual(updated.mcp["model-control"].command, currentCommand);
+  assert.deepEqual(updated.plugin, ["user-plugin", currentPluginUrl]);
+  assert.equal(updated.plugin.includes(oldPluginUrl), false);
+  assert.equal(updated.default_agent, "user-primary");
+  assert.equal(receipt.managedSurfaceVersion, 1);
+  assert.deepEqual(
+    receipt.entries.find(({ path }) => path.join(".") === "mcp.model-control").value.command,
+    currentCommand,
+  );
+  assert.equal(
+    receipt.entries.find(({ path }) => path.join(".") === "plugin").value,
+    currentPluginUrl,
+  );
+});
+
+test("plugin ownership is item-scoped and preserves plugins added after connect", async (t) => {
+  const { configPath, installer } = await fixture(t, {
+    source: `${JSON.stringify({ plugin: ["existing-plugin"] }, null, 2)}\n`,
+  });
+  await installer.install({ settings: { makeRouterDefault: false } });
+  const connected = parseJsoncDocument(await readFile(configPath, "utf8")).value;
+  connected.plugin.push("later-user-plugin");
+  await writeFile(configPath, `${JSON.stringify(connected, null, 2)}\n`);
+
+  assert.equal((await installer.status()).healthy, true);
+  await installer.uninstall();
+  const disconnected = parseJsoncDocument(await readFile(configPath, "utf8")).value;
+  assert.deepEqual(disconnected.plugin, ["existing-plugin", "later-user-plugin"]);
+});
+
+test("install fails closed instead of claiming a matching unowned plugin entry", async (t) => {
+  const current = await fixture(t, { source: "{}\n" });
+  const pluginUrl = pathToFileURL(await realpath(current.installer.pluginPath)).href;
+  await writeFile(
+    current.configPath,
+    `${JSON.stringify({ plugin: [pluginUrl] }, null, 2)}\n`,
+  );
+  const before = await readFile(current.configPath, "utf8");
+
+  await assert.rejects(
+    current.installer.install(),
+    (error) => error.code === "OWNERSHIP_UNVERIFIED",
+  );
+  assert.equal(await readFile(current.configPath, "utf8"), before);
+  await assert.rejects(lstat(current.receiptPath), (error) => error.code === "ENOENT");
+});
+
+test("install fails closed when the bundled plugin target is unavailable", async (t) => {
+  const source = "{\n  \"theme\": \"system\"\n}\n";
+  const current = await fixture(t, {
+    source,
+    pluginPath: join(tmpdir(), `missing-omc-plugin-${process.pid}.js`),
+  });
+
+  await assert.rejects(
+    current.installer.install(),
+    (error) => error.code === "PLUGIN_RUNTIME_UNAVAILABLE" && error.statusCode === 422,
+  );
+  assert.equal(await readFile(current.configPath, "utf8"), source);
+  await assert.rejects(lstat(current.receiptPath), (error) => error.code === "ENOENT");
+});
+
 test("creates a missing config privately and can remove its managed entries", async (t) => {
   const { configPath, installer } = await fixture(t);
 
@@ -368,6 +604,12 @@ test("managed fragment always uses an absolute local MCP command", () => {
   assert.ok(isAbsolute(command[1]));
   assert.equal(command[2], "mcp");
   assert.doesNotMatch(command.join(" "), /npm link|npx/);
+  assert.equal(fragment.plugin.length, 1);
+  assert.match(fragment.plugin[0], /^file:\/\//);
+  assert.equal(fragment.default_agent, undefined);
+
+  const defaultFragment = buildManagedOpenCodeFragment({ includeDefaultAgent: true });
+  assert.equal(defaultFragment.default_agent, "omc-router");
 });
 
 test("OpenCode verification failure leaves the config and receipt untouched", async (t) => {

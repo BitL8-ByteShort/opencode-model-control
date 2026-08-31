@@ -4,7 +4,7 @@ export const BENCHMARK_SUMMARY = Object.freeze({
   generatedAt: null,
   headline: "No models have been benchmark-promoted yet.",
   explanation:
-    "Initial assignments are capability-safe candidates. A model earns an active role only after the published, repeatable benchmark gate passes.",
+    "Initial assignments use reported metadata as routing candidates. A manual runtime check proves only one provider response; a model earns qualified evidence only after the published, repeatable benchmark gate passes.",
   roles: [
     { id: "orchestrator", status: "provisional", qualifiedModelId: null },
     { id: "code-worker", status: "provisional", qualifiedModelId: null },
