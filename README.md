@@ -8,7 +8,7 @@ The control panel runs on `127.0.0.1`. OpenCode remains responsible for provider
 
 The running app is authoritative for model names, availability, pricing evidence, and role eligibility.
 
-> **Release status:** the source repository is public at [BitL8-ByteShort/opencode-model-control](https://github.com/BitL8-ByteShort/opencode-model-control). Version `0.1.2` is distributed as a versioned package artifact in its public Git tag; publication to the npm registry is not yet claimed.
+> **Release status:** Version `0.1.2` is available from [npm](https://www.npmjs.com/package/opencode-model-control/v/0.1.2) and as the exact tested package attached to [GitHub Release v0.1.2](https://github.com/BitL8-ByteShort/opencode-model-control/releases/tag/v0.1.2). The [source repository](https://github.com/BitL8-ByteShort/opencode-model-control) is public.
 
 ## What it does
 
@@ -43,14 +43,14 @@ The panel can open without OpenCode, but it cannot discover the user's current m
 
 ## Install
 
-Install the pinned public release package directly from GitHub:
+Install the verified public npm release:
 
 ```sh
-npm install --global https://raw.githubusercontent.com/BitL8-ByteShort/opencode-model-control/v0.1.2/packages/opencode-model-control-0.1.2.tgz
+npm install --global opencode-model-control@0.1.2
 opencode-model-control
 ```
 
-The first command installs the exact prebuilt release artifact and its runtime dependencies. The second command starts the local panel and opens it in the default browser.
+The first command installs the tested `0.1.2` release and its runtime dependencies. The second command starts the local panel and opens it in the default browser.
 
 Then:
 
@@ -83,16 +83,16 @@ The connector writes absolute Node and package CLI paths, so a source checkout d
 
 `npm start` opens the panel in the default browser. Use `npm start -- --no-open` to suppress browser launch, or set `OMC_PORT` to another unprivileged local port.
 
-### Optional npm-registry distribution
+### Direct GitHub release artifact
 
-If a future release is independently verified on the npm registry, the shorter global command will be:
+To install the same tested tarball directly from GitHub:
 
 ```sh
-npm install --global opencode-model-control
+npm install --global https://github.com/BitL8-ByteShort/opencode-model-control/releases/download/v0.1.2/opencode-model-control-0.1.2.tgz
 opencode-model-control
 ```
 
-Until this README links to that registry artifact, use the pinned GitHub command above. Maintainers should follow the [release checklist](docs/releasing.md) before claiming an npm publication.
+Its SHA-256 is `b8ac329f72fd351159e4f1c86a739bdc7005b96b8d4a7f793580edd5929d5aee`; the package record is in [packages/README.md](packages/README.md).
 
 ## What “Update available models” means
 
