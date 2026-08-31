@@ -2,6 +2,10 @@
 
 All notable changes to OpenCode Model Control are recorded here. The project follows [Semantic Versioning](https://semver.org/).
 
+## 0.1.2 - 2026-08-30
+
+- Published the verified package as an immutable artifact in the public Git tag, providing a one-command install that does not depend on npm registry publication or npm's Git-dependency packaging lifecycle.
+
 ## 0.1.1 - 2026-08-30
 
 - Switched the public installer to an attached, prebuilt GitHub release package after clean-room testing exposed unreliable npm extraction for a Git-source dependency install.

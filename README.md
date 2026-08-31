@@ -1,6 +1,6 @@
 # OpenCode Model Control
 
-![OpenCode Model Control — Route smarter. Stay in control.](https://raw.githubusercontent.com/BitL8-ByteShort/opencode-model-control/v0.1.1/docs/assets/opencode-model-control-banner.png)
+![OpenCode Model Control — Route smarter. Stay in control.](https://raw.githubusercontent.com/BitL8-ByteShort/opencode-model-control/v0.1.2/docs/assets/opencode-model-control-banner.png)
 
 OpenCode Model Control is a local control panel and MCP companion for building a model team inside OpenCode. It discovers the models OpenCode currently exposes, lets the user decide which ones the router may use, assigns an orchestrator and specialist roles, and safely connects that policy to OpenCode.
 
@@ -8,7 +8,7 @@ The control panel runs on `127.0.0.1`. OpenCode remains responsible for provider
 
 The running app is authoritative for model names, availability, pricing evidence, and role eligibility.
 
-> **Release status:** the source repository is public at [BitL8-ByteShort/opencode-model-control](https://github.com/BitL8-ByteShort/opencode-model-control). Version `0.1.1` is distributed as an attached GitHub release package; publication to the npm registry is not yet claimed.
+> **Release status:** the source repository is public at [BitL8-ByteShort/opencode-model-control](https://github.com/BitL8-ByteShort/opencode-model-control). Version `0.1.2` is distributed as a versioned package artifact in its public Git tag; publication to the npm registry is not yet claimed.
 
 ## What it does
 
@@ -46,7 +46,7 @@ The panel can open without OpenCode, but it cannot discover the user's current m
 Install the pinned public release package directly from GitHub:
 
 ```sh
-npm install --global https://github.com/BitL8-ByteShort/opencode-model-control/releases/download/v0.1.1/opencode-model-control-0.1.1.tgz
+npm install --global https://raw.githubusercontent.com/BitL8-ByteShort/opencode-model-control/v0.1.2/packages/opencode-model-control-0.1.2.tgz
 opencode-model-control
 ```
 
