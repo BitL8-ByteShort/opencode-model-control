@@ -4,9 +4,9 @@ This matrix separates implemented behavior from compatibility that still needs l
 
 | Surface | Status | Boundary |
 | --- | --- | --- |
-| Node.js `^20.19.0` or `>=22.12.0` | Supported by package contract | `npm run verify` is the release gate. |
+| Node.js `>=22.12.0` | Supported by package contract | CI verifies the minimum 22.12.0 release and the current Node.js 24 LTS line. |
 | Canonical public repository | Supported | Public source: `https://github.com/BitL8-ByteShort/opencode-model-control`; releases include tagged source and a checksum-recorded package artifact. |
-| npm registry package | Published; `0.1.2` clean-install verified on macOS | Exact public version: [`opencode-model-control@0.1.2`](https://www.npmjs.com/package/opencode-model-control/v/0.1.2). Registry integrity matches the tested tarball; Linux acceptance remains separate. |
+| npm registry package | Channel-specific verification required | This source tree identifies as `0.2.0`; the exact [registry version](https://www.npmjs.com/package/opencode-model-control/v/0.2.0), registry integrity, and package contents must be verified after publication. Linux fresh-install acceptance remains separate. |
 | OpenCode 1.18.x custom agents | Targeted | Managed config uses the 1.18.x `agent` and local MCP surfaces. |
 | OpenCode 1.18.22 on macOS | Parser, discovery, connect, MCP handshake, and disconnect tested | Isolated acceptance does not invoke a model or prove a provider session. |
 | Later OpenCode configuration majors | Unverified | Schema or agent semantics may change; support requires explicit tests. |
@@ -16,6 +16,7 @@ This matrix separates implemented behavior from compatibility that still needs l
 | Native Windows | Unverified | Path, process, and browser behavior need dedicated acceptance. |
 | OpenCode TUI | Targeted | Managed agents load in a fresh OpenCode process after connection. |
 | OpenCode desktop | Unverified separately | Desktop compatibility is not inferred from CLI parsing. |
+| Responsive control panel | Implemented | Full-width stacked modules, a persistent collapsible desktop sidebar, and a mobile dialog drawer avoid the prior split-column overflow. |
 | All-provider model discovery | Implemented | Uses plugin-aware `opencode models --verbose` with no provider filter. |
 | Catalog refresh | Implemented | **Update available models** adds `--refresh`; no model is invoked. |
 | OpenCode config normalization during discovery | Upstream OpenCode behavior observed on 1.18.22 | OpenCode may add its standard `$schema` property when reading a project JSONC config; Model Control does not own or remove it. |
@@ -26,14 +27,18 @@ This matrix separates implemented behavior from compatibility that still needs l
 | Verified-free mode | Implemented | Only independently verified exact-zero pricing is eligible. |
 | Known-paid preference | Implemented | Paid mode allows verified free and known paid, preferring paid after hard gates. |
 | Unknown pricing | Blocked | Missing or ambiguous pricing is not assumed free and cannot auto-route. |
-| Big Pickle primary | Configured, unbenchmarked | Text-only default; quality claims require benchmark evidence. |
-| MiMo-V2.5 Free media role | Capability-routed, unbenchmarked | Media must be attached directly to the vision subagent. |
-| One-click config connection | Implemented | Managed paths only; conflict refusal, backup, receipt, isolated OpenCode parse, atomic write. |
+| Big Pickle primary | Configured, unbenchmarked | Text-first initial assignment; quality claims require benchmark evidence. |
+| Attachment-aware media routing | Implemented; release acceptance pending | A media turn entering through `omc-router` selects the compatible saved vision model. Media-only analysis becomes a hard tool-free vision-worker turn; only explicit user-authored text classified as a code change retains Omc-Router. |
+| MiMo-V2.5 Free media role | Capability-routed, unbenchmarked | Initial vision assignment; vision workers require text output plus confirmed tool-call and input-modality support for the possible media-assisted code lane, while ordinary analysis runs with tools and permissions denied. |
+| Automatic code and review workflow | Implemented; prompt-governed | Eligible code changes route code worker -> read-only reviewer -> at most one review-driven repair. The reviewer has no shell/edit/write permission, and specialists cannot recurse. |
+| Optional Omc-Router default | Implemented | Added only when no user default exists; user-owned defaults are preserved and only receipt-owned values can be removed. |
+| One-click config connection | Implemented | Managed paths only; conflict refusal, backup, receipt, isolated OpenCode parse, atomic write. Receipts detect owned-path/version drift but do not authenticate package file contents. |
 | Managed disconnect | Implemented | Removes receipt-owned entries and stops on divergence. |
 | Local MCP control relay | Implemented and handshake-tested | The primary can consult route policy; specialists cannot recurse. |
-| MCP pre-first-call routing | Not supported by stock OpenCode | MCP tools become available after model selection. |
+| Local pre-dispatch media plugin | Implemented and contract-tested | Reads attachment type/MIME plus bounded user-authored text only for local write-intent classification; never reads attachment content/locations/payloads; treats attachments as untrusted; hard-denies tools for non-code media turns; fails closed. |
+| MCP first-model selection | Not supported by MCP alone | MCP tools become available after model selection; the local OpenCode plugin provides the narrower Omc-Router media switch. |
+| Manual runtime access check | Implemented; never automatic | One explicitly confirmed bounded OpenCode run checks access only. OpenCode may retry provider failures, and every attempt may consume quota/cost or be retained. It is not a quality benchmark and cannot promote evidence. |
 | Direct OpenRouter account/catalog API | Not implemented | OpenCode remains the provider/authentication authority. |
-| Optional provider gateway | Planned, not implemented | Required for attachment-aware pre-dispatch routing. |
 
 ## Current bundled evidence
 
@@ -52,4 +57,4 @@ These IDs are not an availability promise. OpenCode or a provider may rename, ra
 
 ## Release evidence
 
-A release should record the operating system, architecture, Node version, exact OpenCode version, discovered model count, full test result, build result, package audit, package-content dry run, isolated connector acceptance, and MCP handshake result. Missing platform evidence stays labeled unverified.
+A release should record the operating system, architecture, Node version, exact OpenCode version, discovered model count, full test result, build result, package audit, package-content dry run, isolated connector acceptance, MCP handshake, local-plugin load, attachment-aware route, automatic code/review workflow, and safe default preservation. A manual runtime access check must remain separately labeled and is not benchmark evidence. Missing platform evidence stays labeled unverified.

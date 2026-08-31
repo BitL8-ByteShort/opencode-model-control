@@ -324,7 +324,7 @@ function capabilityRoleProfile({ inputModalities, outputModalities, toolCall }) 
     roles.orchestrator = 25;
     roles["code-worker"] = 25;
   }
-  if (acceptsText && inputModalities.includes("image") && returnsText) {
+  if (acceptsText && inputModalities.includes("image") && returnsText && toolCall) {
     roles["vision-worker"] = 25;
   }
   return {

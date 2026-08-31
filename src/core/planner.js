@@ -104,7 +104,7 @@ function requirementsFor(role, route, task) {
   if (role === "orchestrator") return { modalities: ["text"], access: task.access };
   if (role === "code-worker") return { modalities: ["text"], access: "write" };
   if (role === "vision-worker") {
-    return { modalities: task.modalities, access: task.access };
+    return { modalities: task.modalities, access: "read" };
   }
   return {
     modalities: route === "reviewer" ? task.modalities : ["text"],
@@ -139,16 +139,15 @@ function assignmentFor({ role, route, task, catalog, settings }) {
     });
   }
 
-  const allowFallback =
-    route !== "direct" && settings.maxFallbacksPerAssignment === 1;
-  const fallback = allowFallback
-    ? candidates.find((model) => model.id !== selected.id) ?? null
-    : null;
   return {
     role,
     modelId: selected.id,
-    fallbackModelId: fallback?.id ?? null,
-    fallbackCount: fallback ? 1 : 0,
+    // These legacy fields remain in the version-one route contract, but the
+    // runtime does not execute alternate-model fallbacks. The persisted
+    // maxFallbacksPerAssignment setting controls only the optional
+    // reviewer-to-code-worker repair pass generated for Omc-Router.
+    fallbackModelId: null,
+    fallbackCount: 0,
     selection: configured === AUTO_ASSIGNMENT ? "auto" : "explicit",
     access: requirements.access,
     modalities: requirements.modalities,

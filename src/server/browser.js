@@ -20,3 +20,18 @@ export function launchBrowser(url, { spawn = nodeSpawn } = {}) {
   child.on("error", () => {});
   child.unref();
 }
+
+export function announceControlPanel(
+  { publicUrl, launchUrl, open, interactive = false },
+  { write = (message) => process.stdout.write(message), launch = launchBrowser } = {},
+) {
+  write(`OpenCode Model Control: ${publicUrl}\n`);
+  if (open) {
+    launch(launchUrl);
+    write("If the browser does not open, rerun opencode-model-control --no-open in your terminal.\n");
+  } else if (interactive) {
+    write(`Private write-enabled URL (do not share): ${launchUrl}\n`);
+  } else {
+    write("This URL is read-only. Run opencode-model-control without --no-open to enable changes.\n");
+  }
+}

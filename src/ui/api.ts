@@ -8,8 +8,13 @@ import type {
   RouteResponse,
   RouteModality,
   RouterSettings,
+  RuntimeQualificationSummary,
   UsageWindow,
 } from "./types";
+import { captureMutationSession } from "./session-auth.js";
+
+const mutationSession = captureMutationSession();
+const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 export class ApiError extends Error {
   readonly status: number;
@@ -23,6 +28,7 @@ export class ApiError extends Error {
 
 async function requestJson<T>(path: string, init: RequestInit = {}): Promise<T> {
   let response: Response;
+  const mutation = MUTATING_METHODS.has(String(init.method ?? "GET").toUpperCase());
 
   try {
     response = await fetch(path, {
@@ -31,8 +37,11 @@ async function requestJson<T>(path: string, init: RequestInit = {}): Promise<T> 
       headers: {
         Accept: "application/json",
         ...(init.body ? { "Content-Type": "application/json" } : {}),
-        ...(["POST", "PUT", "PATCH", "DELETE"].includes(String(init.method).toUpperCase())
-          ? { "X-OMC-Request": "1" }
+        ...(mutation
+          ? {
+              "X-OMC-Request": "1",
+              ...(mutationSession ? { "X-OMC-Session": mutationSession } : {}),
+            }
           : {}),
         ...init.headers,
       },
@@ -86,7 +95,10 @@ export function testRoute(task: string, modality: RouteModality): Promise<RouteR
 }
 
 export function refreshCatalog(): Promise<ModelControlState | null> {
-  return requestJson<ModelControlState | null>("/api/catalog/refresh", { method: "POST" });
+  return requestJson<ModelControlState | null>("/api/catalog/refresh", {
+    method: "POST",
+    body: "{}",
+  });
 }
 
 export function getOpenCodeConfig(): Promise<OpenCodeConfigResponse> {
@@ -129,6 +141,27 @@ export function uninstallOpenCodeIntegration(): Promise<OpenCodeIntegrationStatu
 
 export function getBenchmarkSummary(signal?: AbortSignal): Promise<BenchmarkSummary> {
   return requestJson<BenchmarkSummary>("/api/benchmarks/summary", { signal });
+}
+
+export function getRuntimeQualification(signal?: AbortSignal): Promise<RuntimeQualificationSummary> {
+  return requestJson<RuntimeQualificationSummary>("/api/runtime-qualification", { signal });
+}
+
+export function runRuntimeQualification(
+  modelId: string,
+  confirmations: {
+    acknowledgeProviderRequest: boolean;
+    acknowledgeCostAndDataTerms: boolean;
+  },
+): Promise<RuntimeQualificationSummary> {
+  return requestJson<RuntimeQualificationSummary>("/api/runtime-qualification/run", {
+    method: "POST",
+    body: JSON.stringify({
+      modelId,
+      acknowledgeProviderRequest: confirmations.acknowledgeProviderRequest,
+      acknowledgeCostAndDataTerms: confirmations.acknowledgeCostAndDataTerms,
+    }),
+  });
 }
 
 export function getUsage(window: UsageWindow = "30d", signal?: AbortSignal): Promise<OpenCodeUsage> {

@@ -102,7 +102,7 @@ export function RoleAssignments({
           />
         </label>
         <label className="field field--short">
-          <span className="field__label"><span>Fallbacks per role</span><small>Retry boundary</small></span>
+          <span className="field__label"><span>Review repair passes</span><small>0 or 1 after review</small></span>
           <input
             max={1}
             min={0}
@@ -110,6 +110,7 @@ export function RoleAssignments({
             type="number"
             value={settings.maxFallbacksPerAssignment}
           />
+          <small className="field__hint">Allows one bounded return to the same code worker after a reviewer finds a concrete defect. It does not switch to another model.</small>
         </label>
       </div>
       <div className={settings.costPolicy === "known-cost" ? "locked-setting locked-setting--warning" : "locked-setting"}><Icon name="lock" size={16} /><span><strong>{settings.costPolicy === "known-cost" ? "Known paid models allowed" : "Verified-free policy active"}</strong><small>Unknown or unverified pricing is always excluded from automatic routing.</small></span></div>

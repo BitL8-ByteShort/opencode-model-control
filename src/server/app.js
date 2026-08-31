@@ -7,8 +7,10 @@ import { ControlService } from "./service.js";
 import {
   assertLoopbackHost,
   assertTrustedMutation,
+  createMutationSessionSecret,
   json,
   mimeType,
+  mutationSessionLaunchUrl,
   readJson,
   safeStaticPath,
   setSecurityHeaders,
@@ -73,8 +75,18 @@ async function serveStatic(request, response) {
   }
 }
 
-export async function handleApi(request, response, service) {
+const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
+export async function handleApi(
+  request,
+  response,
+  service,
+  { mutationSessionSecret } = {},
+) {
   const url = new URL(request.url, "http://localhost");
+  if (url.pathname.startsWith("/api/") && MUTATING_METHODS.has(request.method)) {
+    assertTrustedMutation(request, mutationSessionSecret);
+  }
 
   if (request.method === "GET" && url.pathname === "/api/health") {
     const policy = service.getState().settings.costPolicy;
@@ -128,7 +140,6 @@ export async function handleApi(request, response, service) {
       "/api/opencode/config/reveal",
     ].includes(url.pathname)
   ) {
-    assertTrustedMutation(request);
     const body = await readJson(request);
     assertEmptyActionBody(body);
     const result = url.pathname.endsWith("/open")
@@ -141,20 +152,25 @@ export async function handleApi(request, response, service) {
     json(response, 200, service.getBenchmarkSummary());
     return true;
   }
+  if (request.method === "GET" && url.pathname === "/api/runtime-qualification") {
+    json(response, 200, service.getRuntimeQualificationSummary());
+    return true;
+  }
+  if (request.method === "POST" && url.pathname === "/api/runtime-qualification/run") {
+    json(response, 200, await service.runRuntimeQualification(await readJson(request)));
+    return true;
+  }
   if (request.method === "PUT" && url.pathname === "/api/settings") {
-    assertTrustedMutation(request);
     const body = await readJson(request);
     json(response, 200, await service.updateSettings(body?.settings ?? body));
     return true;
   }
   if (request.method === "POST" && url.pathname === "/api/route") {
-    assertTrustedMutation(request);
     json(response, 200, service.route(await readJson(request)));
     return true;
   }
   if (request.method === "POST" && url.pathname === "/api/catalog/refresh") {
-    assertTrustedMutation(request);
-    if ((request.headers["content-length"] ?? "0") !== "0") await readJson(request);
+    await readJson(request);
     json(response, 200, await service.refreshCatalog());
     return true;
   }
@@ -165,7 +181,6 @@ export async function handleApi(request, response, service) {
       "/api/opencode/integration/uninstall",
     ].includes(url.pathname)
   ) {
-    assertTrustedMutation(request);
     await readJson(request);
     const result = url.pathname.endsWith("/install")
       ? await service.installOpenCodeIntegration()
@@ -186,12 +201,18 @@ export async function createControlServer({
   discovery,
   integrationInstaller,
   usageReader,
+  runtimeQualificationRunner,
+  runtimeQualificationHistoryPath,
+  mutationSessionSecret,
 } = {}) {
+  const activeMutationSessionSecret = mutationSessionSecret ?? createMutationSessionSecret();
   const service = await new ControlService({
     settingsPath,
     discovery,
     integrationInstaller,
     usageReader,
+    runtimeQualificationRunner,
+    runtimeQualificationHistoryPath,
   }).initialize();
   const vite = development
     ? await import("vite").then(({ createServer }) =>
@@ -203,7 +224,9 @@ export async function createControlServer({
     setSecurityHeaders(response, { development });
     try {
       assertLoopbackHost(request);
-      if (await handleApi(request, response, service)) return;
+      if (await handleApi(request, response, service, {
+        mutationSessionSecret: activeMutationSessionSecret,
+      })) return;
       if (!["GET", "HEAD"].includes(request.method)) {
         json(response, 405, { error: { code: "METHOD_NOT_ALLOWED", message: "Method not allowed." } });
         return;
@@ -222,9 +245,18 @@ export async function createControlServer({
   return {
     server,
     service,
+    launchUrl(baseUrl) {
+      return mutationSessionLaunchUrl(baseUrl, activeMutationSessionSecret);
+    },
     async close() {
       await Promise.all([
-        new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve()))),
+        new Promise((resolve, reject) => server.close((error) =>
+          error?.code === "ERR_SERVER_NOT_RUNNING"
+            ? resolve()
+            : error
+              ? reject(error)
+              : resolve(),
+        )),
         vite?.close(),
       ]);
     },

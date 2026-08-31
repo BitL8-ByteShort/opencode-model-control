@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { Client, InMemoryTransport } from "@modelcontextprotocol/client";
 
 import { createModelControlMcpServer } from "../../src/mcp/server.js";
+import { PACKAGE_VERSION } from "../../src/version.js";
 
 function fakeService() {
   return {
@@ -79,6 +80,10 @@ test("MCP exposes only the two read-only routing tools", async (t) => {
     ["get_model_status", "route_task"],
   );
   assert.ok(result.tools.every((tool) => tool.annotations?.readOnlyHint === true));
+  assert.deepEqual(client.getServerVersion(), {
+    name: "opencode-model-control",
+    version: PACKAGE_VERSION,
+  });
 });
 
 test("MCP relays panel state without secrets and returns a bounded route", async (t) => {

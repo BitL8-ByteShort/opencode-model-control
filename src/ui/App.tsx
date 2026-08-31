@@ -2,10 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   getBenchmarkSummary,
   getOpenCodeIntegration,
+  getRuntimeQualification,
   getState,
   getUsage,
   installOpenCodeIntegration,
   refreshCatalog,
+  runRuntimeQualification,
   uninstallOpenCodeIntegration,
   updateSettings,
 } from "./api";
@@ -16,7 +18,7 @@ import {
   settingsForApi,
   toggleEnabledModel,
 } from "./model-control.js";
-import type { BenchmarkSummary, ModelControlState, OpenCodeIntegrationStatus, OpenCodeUsage, RouterSettings, UsageWindow } from "./types";
+import type { BenchmarkSummary, ModelControlState, OpenCodeIntegrationStatus, OpenCodeUsage, RouterSettings, RuntimeQualificationSummary, UsageWindow } from "./types";
 import { AppShell } from "./components/AppShell";
 import { BenchmarkPanel } from "./components/BenchmarkPanel";
 import { ConfigPanel } from "./components/ConfigPanel";
@@ -48,6 +50,10 @@ export default function App() {
   const [benchmark, setBenchmark] = useState<BenchmarkSummary | null>(null);
   const [benchmarkLoading, setBenchmarkLoading] = useState(true);
   const [benchmarkError, setBenchmarkError] = useState("");
+  const [runtimeQualification, setRuntimeQualification] = useState<RuntimeQualificationSummary | null>(null);
+  const [runtimeQualificationLoading, setRuntimeQualificationLoading] = useState(true);
+  const [runtimeQualificationRunning, setRuntimeQualificationRunning] = useState(false);
+  const [runtimeQualificationError, setRuntimeQualificationError] = useState("");
   const [integration, setIntegration] = useState<OpenCodeIntegrationStatus | null>(null);
   const [integrationBusy, setIntegrationBusy] = useState(false);
   const [usage, setUsage] = useState<OpenCodeUsage | null>(null);
@@ -94,6 +100,18 @@ export default function App() {
     }
   }, []);
 
+  const loadRuntimeQualification = useCallback(async () => {
+    setRuntimeQualificationLoading(true);
+    setRuntimeQualificationError("");
+    try {
+      setRuntimeQualification(await getRuntimeQualification());
+    } catch (error) {
+      setRuntimeQualificationError(error instanceof Error ? error.message : "Runtime-check evidence could not be loaded.");
+    } finally {
+      setRuntimeQualificationLoading(false);
+    }
+  }, []);
+
   const loadUsage = useCallback(async (window: UsageWindow) => {
     setUsageLoading(true);
     setUsageError("");
@@ -110,8 +128,9 @@ export default function App() {
     void loadDashboard();
     void loadBenchmarks();
     void loadIntegration();
+    void loadRuntimeQualification();
     void loadUsage("30d");
-  }, [loadBenchmarks, loadDashboard, loadIntegration, loadUsage]);
+  }, [loadBenchmarks, loadDashboard, loadIntegration, loadRuntimeQualification, loadUsage]);
 
   const changeUsageWindow = (nextWindow: UsageWindow) => {
     setUsageWindow(nextWindow);
@@ -245,6 +264,31 @@ export default function App() {
     }
   };
 
+  const runOneRuntimeQualification = async (
+    modelId: string,
+    confirmations: {
+      acknowledgeProviderRequest: boolean;
+      acknowledgeCostAndDataTerms: boolean;
+    },
+  ) => {
+    setRuntimeQualificationRunning(true);
+    setRuntimeQualificationError("");
+    setActionError("");
+    setNotice("");
+    try {
+      const result = await runRuntimeQualification(modelId, confirmations);
+      setRuntimeQualification(result);
+      const latest = result.results.find((entry) => entry.modelId === modelId);
+      setNotice(latest?.status === "passed"
+        ? "One runtime access check passed. Benchmark qualification remains unverified."
+        : "The runtime access check finished without confirming access. See the stored result below.");
+    } catch (error) {
+      setRuntimeQualificationError(error instanceof Error ? error.message : "The runtime check could not be completed.");
+    } finally {
+      setRuntimeQualificationRunning(false);
+    }
+  };
+
   const toggleModel = (modelId: string, enabled: boolean) => {
     setDraftSettings((current) => {
       if (!current) return current;
@@ -298,21 +342,46 @@ export default function App() {
           <p className="privacy-note"><Icon name="lock" size={16} /><span><strong>Local control is not local inference.</strong> The dashboard and router stay on this computer, but enabled OpenCode provider models may receive routed content under their own data terms. Never include credentials or nonpublic personal data.</span></p>
           {state.catalog.length === 0 ? <EmptyCatalog loading={refreshing} onRefresh={refresh} /> : (
             <div className="dashboard-grid">
-              <ModelTable catalog={state.catalog} onToggle={toggleModel} settings={draftSettings} />
-              <div className="dashboard-side">
-                <RoleAssignments catalog={state.catalog} onChange={setDraftSettings} settings={draftSettings} />
-                <RouteTester catalog={state.catalog} />
-                <ConfigPanel
-                  hasUnsavedChanges={dirty}
-                  integration={integration}
-                  integrationBusy={integrationBusy}
-                  onConnect={() => void connect()}
-                  onDisconnect={() => void disconnect()}
-                />
-              </div>
+              <ModelTable
+                catalog={state.catalog}
+                onToggle={toggleModel}
+                qualification={runtimeQualification}
+                settings={draftSettings}
+              />
+              <RoleAssignments catalog={state.catalog} onChange={setDraftSettings} settings={draftSettings} />
+              <RouteTester catalog={state.catalog} />
+              <ConfigPanel
+                hasUnsavedChanges={dirty}
+                integration={integration}
+                integrationBusy={integrationBusy}
+                makeRouterDefault={draftSettings.makeRouterDefault}
+                settingsBusy={saving}
+                onConnect={() => void connect()}
+                onDisconnect={() => void disconnect()}
+                onMakeRouterDefaultChange={(makeRouterDefault) => {
+                  setDraftSettings((current) => current
+                    ? { ...current, makeRouterDefault }
+                    : current);
+                  setNotice("");
+                }}
+              />
             </div>
           )}
-          <BenchmarkPanel catalog={state.catalog} error={benchmarkError} loading={benchmarkLoading} onReload={loadBenchmarks} summary={benchmark} />
+          <BenchmarkPanel
+            catalog={state.catalog}
+            error={benchmarkError}
+            loading={benchmarkLoading}
+            onReload={() => {
+              void loadBenchmarks();
+              void loadRuntimeQualification();
+            }}
+            onRunRuntimeQualification={(modelId, confirmations) => void runOneRuntimeQualification(modelId, confirmations)}
+            qualification={runtimeQualification}
+            qualificationError={runtimeQualificationError}
+            qualificationLoading={runtimeQualificationLoading}
+            qualificationRunning={runtimeQualificationRunning}
+            summary={benchmark}
+          />
           <UsagePanel
             error={usageError}
             loading={usageLoading}

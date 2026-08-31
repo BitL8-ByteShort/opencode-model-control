@@ -159,6 +159,12 @@ export function validateSettings(value, catalog = loadModelCatalog()) {
   ) {
     invalidSettings("maxFallbacksPerAssignment must be zero or one.");
   }
+  if (
+    value.makeRouterDefault !== undefined &&
+    typeof value.makeRouterDefault !== "boolean"
+  ) {
+    invalidSettings("makeRouterDefault must be true or false.");
+  }
 
   const settings = {
     schemaVersion: CURRENT_SETTINGS_VERSION,
@@ -170,6 +176,7 @@ export function validateSettings(value, catalog = loadModelCatalog()) {
     ),
     maxDelegationDepth: value.maxDelegationDepth,
     maxFallbacksPerAssignment: value.maxFallbacksPerAssignment,
+    makeRouterDefault: value.makeRouterDefault ?? true,
     modelControls: normalizeModelControls(value.modelControls, normalizedCatalog),
   };
   assertExplicitAssignments(settings, normalizedCatalog);
@@ -185,6 +192,7 @@ export function createDefaultSettings(catalog = loadModelCatalog()) {
     roleAssignments: defaultRoleAssignmentsForCatalog(normalizedCatalog),
     maxDelegationDepth: 1,
     maxFallbacksPerAssignment: 1,
+    makeRouterDefault: true,
     modelControls: Object.fromEntries(
       normalizedCatalog.models.map((model) => [
         model.id,
@@ -327,6 +335,10 @@ export function migrateSettings(value, catalog = loadModelCatalog()) {
         Number.isInteger(value.maxFallbacksPerAssignment)
           ? value.maxFallbacksPerAssignment
           : 1,
+      makeRouterDefault:
+        typeof value.makeRouterDefault === "boolean"
+          ? value.makeRouterDefault
+          : true,
       modelControls: controls,
     },
     normalizedCatalog,

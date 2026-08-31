@@ -28,10 +28,11 @@
         "complexity": "medium",
         "modalities": ["text"],
         "access": "write",
+        "requiresReview": true,
         "delegationDepth": 0
       },
       "expected": {
-        "route": "code-worker",
+        "route": "orchestrator",
         "assignments": [
           {
             "role": "orchestrator",
@@ -40,6 +41,10 @@
           {
             "role": "code-worker",
             "modelId": "opencode/ling-3.0-flash-fin-free"
+          },
+          {
+            "role": "reviewer",
+            "modelId": "opencode/nemotron-3-ultra-free"
           }
         ]
       }
@@ -129,6 +134,7 @@
         "complexity": "medium",
         "modalities": ["image", "text"],
         "access": "write",
+        "requiresReview": true,
         "delegationDepth": 0
       },
       "expected": {
@@ -145,6 +151,10 @@
           {
             "role": "vision-worker",
             "modelId": "opencode/mimo-v2.5-free"
+          },
+          {
+            "role": "reviewer",
+            "modelId": "opencode/nemotron-3-ultra-free"
           }
         ]
       }

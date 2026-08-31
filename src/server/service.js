@@ -9,8 +9,10 @@ import {
   validateSettings,
 } from "../core/index.js";
 import { ROLE_REQUIREMENTS } from "../core/constants.js";
-import { OpenCodeIntegrationInstaller } from "../installer/index.js";
-import { buildOpenCodeConfig, renderOpenCodeConfig } from "../opencode/index.js";
+import {
+  OpenCodeIntegrationInstaller,
+  buildManagedOpenCodeFragment,
+} from "../installer/index.js";
 import { BENCHMARK_SUMMARY } from "./benchmark-summary.js";
 import {
   readCatalogSnapshot,
@@ -20,14 +22,52 @@ import {
 import { classifyRouteRequest } from "./task-classifier.js";
 import { discoverOpenCode, mergeDiscoveredCatalog } from "./opencode-cli.js";
 import { readOpenCodeUsage } from "./opencode-usage.js";
+import { runOpenCodeRuntimeQualification } from "./runtime-qualification.js";
+import {
+  appendRuntimeQualificationResult,
+  emptyRuntimeQualificationHistory,
+  readRuntimeQualificationHistory,
+  resolveRuntimeQualificationHistoryPath,
+} from "./runtime-qualification-store.js";
 import { readSettings, resolveSettingsPath, writeSettings } from "./settings-store.js";
 
 function evidenceFor(model) {
   if (model.evidence) return model.evidence;
   if (model.profileSource === "capability" || model.modalities.input.some((modality) => modality !== "text")) {
-    return { status: "capability-only", label: "Capability verified; benchmark pending" };
+    return { status: "capability-only", label: "Reported capability; runtime unverified" };
   }
   return { status: "candidate", label: "Unbenchmarked role" };
+}
+
+function invalidRuntimeQualification(message, code = "INVALID_RUNTIME_QUALIFICATION_REQUEST") {
+  throw Object.assign(new Error(message), { code, statusCode: 400 });
+}
+
+function validateRuntimeQualificationRequest(input) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    invalidRuntimeQualification("Runtime checks require a selected model and explicit confirmations.");
+  }
+  const allowedKeys = new Set([
+    "modelId",
+    "acknowledgeProviderRequest",
+    "acknowledgeCostAndDataTerms",
+  ]);
+  if (Object.keys(input).some((key) => !allowedKeys.has(key))) {
+    invalidRuntimeQualification("Runtime checks do not accept prompts, files, or custom provider options.");
+  }
+  if (typeof input.modelId !== "string" || !input.modelId.trim()) {
+    invalidRuntimeQualification("Choose one available model to check.");
+  }
+  if (
+    input.acknowledgeProviderRequest !== true ||
+    input.acknowledgeCostAndDataTerms !== true
+  ) {
+    invalidRuntimeQualification(
+      "Confirm both the real provider request and its possible cost and data-processing terms before running the check.",
+      "RUNTIME_QUALIFICATION_CONFIRMATION_REQUIRED",
+    );
+  }
+  return input.modelId.trim();
 }
 
 function publicCatalog(catalog, settings) {
@@ -122,12 +162,17 @@ export class ControlService {
     discovery = discoverOpenCode,
     integrationInstaller = new OpenCodeIntegrationInstaller(),
     usageReader = readOpenCodeUsage,
+    runtimeQualificationRunner = runOpenCodeRuntimeQualification,
+    runtimeQualificationHistoryPath,
   } = {}) {
     this.settingsPath = settingsPath ?? resolveSettingsPath();
     this.catalogSnapshotPath = catalogSnapshotPath ?? resolveCatalogSnapshotPath(this.settingsPath);
+    this.runtimeQualificationHistoryPath = runtimeQualificationHistoryPath ??
+      resolveRuntimeQualificationHistoryPath(this.settingsPath);
     this.discovery = discovery;
     this.integrationInstaller = integrationInstaller;
     this.usageReader = usageReader;
+    this.runtimeQualificationRunner = runtimeQualificationRunner;
     this.baseCatalog = loadModelCatalog();
     this.catalog = unavailableCatalog(this.baseCatalog);
     this.hasLiveSnapshot = false;
@@ -141,10 +186,22 @@ export class ControlService {
       checkedAt: null,
       error: null,
     };
+    this.runtimeQualificationHistory = emptyRuntimeQualificationHistory();
+    this.runtimeQualificationWarning = null;
+    this.runtimeQualificationRunning = false;
   }
 
   async initialize() {
     const persistedCatalog = await readCatalogSnapshot({ path: this.catalogSnapshotPath });
+    try {
+      this.runtimeQualificationHistory = await readRuntimeQualificationHistory({
+        path: this.runtimeQualificationHistoryPath,
+      });
+    } catch {
+      this.runtimeQualificationHistory = emptyRuntimeQualificationHistory();
+      this.runtimeQualificationWarning =
+        "Stored runtime-check history is unreadable and was ignored. Remove the local history file before running another check.";
+    }
     if (persistedCatalog) {
       this.catalog = persistedCatalog;
       this.hasLiveSnapshot = true;
@@ -243,25 +300,100 @@ export class ControlService {
     const plan = planRoute({ task, catalog: this.catalog, settings: this.settings });
     const integrationWarning =
       input?.modality && input.modality !== "text"
-        ? "Stock OpenCode selects the primary model before delegation. A text-only primary cannot transparently receive the original attachment; use the vision agent directly until the optional gateway is available."
+        ? "Seamless media routing requires the installed Model Control plugin and an omc-router session. Connect or update Model Control, restart OpenCode, and use Omc-Router."
         : null;
     return { ...plan, task, integrationWarning };
   }
 
   getOpenCodeConfig() {
-    const config = buildOpenCodeConfig({ catalog: this.catalog, settings: this.settings });
+    const config = buildManagedOpenCodeFragment({
+      catalog: this.catalog,
+      settings: this.settings,
+      includeDefaultAgent: this.settings.makeRouterDefault,
+    });
+    const text = `${JSON.stringify(config, null, 2)}\n`;
     return {
       config,
-      text: renderOpenCodeConfig({ catalog: this.catalog, settings: this.settings }),
+      text,
       warnings: [
-        "The Connect action manages only the model-control MCP and omc-* agent entries; conflicting existing values are never overwritten.",
-        "Attachment-aware pre-dispatch routing requires the planned optional gateway.",
+        "Connect manages only the model-control MCP, omc-* agents, its exact plugin array item, and an optional receipt-owned default_agent. Conflicting or user-owned values are never overwritten.",
+        "The preview shows the requested default_agent entry. Connect omits it when OpenCode already has a user-owned default.",
+        "The bundled local plugin performs attachment-aware model selection only for omc-router turns and fails closed when the saved policy has no compatible worker.",
       ],
     };
   }
 
   getBenchmarkSummary() {
     return BENCHMARK_SUMMARY;
+  }
+
+  getRuntimeQualificationSummary() {
+    return {
+      schemaVersion: 1,
+      automatic: false,
+      action: "manual-provider-request",
+      evidenceType: "runtime-access-only",
+      benchmarkPromotion: false,
+      running: this.runtimeQualificationRunning,
+      warning: this.runtimeQualificationWarning,
+      updatedAt: this.runtimeQualificationHistory.updatedAt,
+      results: this.runtimeQualificationHistory.results,
+      boundaries: [
+        "A check run sends one fixed synthetic text prompt through OpenCode to the selected provider. OpenCode may retry retryable provider failures.",
+        "User and project instructions, MCP servers, and external plugins are excluded and verified before the provider phase; configured provider authentication remains available.",
+        "Raw model output is discarded; only redacted result metadata is stored locally.",
+        "A passing check confirms one response at one time. It does not qualify model quality or a routing role.",
+      ],
+    };
+  }
+
+  async runRuntimeQualification(input) {
+    const modelId = validateRuntimeQualificationRequest(input);
+    if (this.runtimeQualificationRunning) {
+      throw Object.assign(new Error("Another runtime check is already in progress."), {
+        code: "RUNTIME_QUALIFICATION_IN_PROGRESS",
+        statusCode: 409,
+      });
+    }
+    if (this.openCode.installed !== true) {
+      throw Object.assign(new Error("OpenCode must be installed before a runtime check can run."), {
+        code: "OPENCODE_NOT_FOUND",
+        statusCode: 409,
+      });
+    }
+    const model = this.catalog.models.find((candidate) => candidate.id === modelId);
+    if (!model || model.discovered === false || model.available !== true) {
+      invalidRuntimeQualification(
+        "The selected model is not currently available in the OpenCode catalog. Update available models and try again.",
+        "RUNTIME_QUALIFICATION_MODEL_UNAVAILABLE",
+      );
+    }
+
+    this.runtimeQualificationRunning = true;
+    try {
+      const result = await this.runtimeQualificationRunner({
+        modelId,
+        openCodeVersion: this.openCode.version ?? null,
+      });
+      try {
+        this.runtimeQualificationHistory = await appendRuntimeQualificationResult(
+          this.runtimeQualificationHistory,
+          result,
+          { path: this.runtimeQualificationHistoryPath },
+        );
+        this.runtimeQualificationWarning = null;
+      } catch {
+        throw Object.assign(new Error(
+          "The provider check finished, but its result could not be saved. Do not rerun it until the local configuration directory is writable.",
+        ), {
+          code: "RUNTIME_QUALIFICATION_PERSIST_FAILED",
+          statusCode: 500,
+        });
+      }
+    } finally {
+      this.runtimeQualificationRunning = false;
+    }
+    return this.getRuntimeQualificationSummary();
   }
 
   async getUsage(window) {
@@ -273,6 +405,11 @@ export class ControlService {
   }
 
   async installOpenCodeIntegration() {
+    // The media plugin runs in OpenCode, outside this service process. Persist
+    // the exact validated policy before registering the plugin so a first-time
+    // Connect is immediately usable even when the user has not changed a
+    // default setting yet.
+    await writeSettings(this.settings, { path: this.settingsPath });
     return this.integrationInstaller.install({
       catalog: this.catalog,
       settings: this.settings,

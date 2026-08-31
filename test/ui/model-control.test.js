@@ -99,6 +99,7 @@ test("serializes the finalized settings contract without UI aliases", () => {
   assert.deepEqual(Object.keys(payload).sort(), [
     "costPolicy",
     "costPreference",
+    "makeRouterDefault",
     "maxDelegationDepth",
     "maxFallbacksPerAssignment",
     "modelControls",
@@ -107,6 +108,7 @@ test("serializes the finalized settings contract without UI aliases", () => {
   ]);
   assert.equal(payload.schemaVersion, 2);
   assert.equal(payload.costPolicy, "free-only");
+  assert.equal(payload.makeRouterDefault, true);
   assert.equal(payload.roleAssignments["vision-worker"], "opencode/mimo-v2.5-free");
   assert.equal("enabledModels" in payload, false);
   assert.equal("primaryModel" in payload, false);
@@ -164,7 +166,7 @@ test("unbenchmarked evidence remains explicit in catalog summaries", () => {
   const summary = catalogSummary(catalog, normalized.settings);
 
   assert.equal(evidenceMeta(true).label, "Unbenchmarked role");
-  assert.equal(evidenceMeta({ status: "capability-only" }).label, "Capability verified; benchmark pending");
+  assert.equal(evidenceMeta({ status: "capability-only" }).label, "Reported capability; runtime unverified");
   assert.equal(summary.total, 6);
   assert.equal(summary.unbenchmarked, 6);
   assert.equal(summary.available, 6);
@@ -208,9 +210,10 @@ test("catalog refresh notices require an OpenCode restart when the connection ch
   );
 });
 
-test("derives the visible route from the exact core assignment response", () => {
+test("derives reviewed code repair semantics without displaying legacy model fallbacks", () => {
   const view = routePlanView({
-    route: "vision-worker",
+    route: "orchestrator",
+    policy: { maxFallbacksPerAssignment: 1 },
     assignments: [
       {
         role: "orchestrator",
@@ -218,21 +221,23 @@ test("derives the visible route from the exact core assignment response", () => 
         fallbackModelId: "opencode/ling-3.0-flash-fin-free",
       },
       {
-        role: "vision-worker",
-        modelId: "opencode/mimo-v2.5-free",
+        role: "code-worker",
+        modelId: "opencode/ling-3.0-flash-fin-free",
         fallbackModelId: "opencode/muse-spark-1.2-contributor-free",
       },
+      {
+        role: "reviewer",
+        modelId: "opencode/nemotron-3-ultra-free",
+      },
     ],
-    reasons: ["non-text-input-capability"],
-    integrationWarning: "Use the vision agent directly for the original attachment.",
+    reasons: ["multiple-specialist-capabilities"],
   });
 
   assert.equal(view.primary, "opencode/big-pickle");
   assert.deepEqual(view.workers, [
-    { role: "vision-worker", modelId: "opencode/mimo-v2.5-free" },
+    { role: "code-worker", modelId: "opencode/ling-3.0-flash-fin-free" },
+    { role: "reviewer", modelId: "opencode/nemotron-3-ultra-free" },
   ]);
-  assert.deepEqual(view.fallbacks, [
-    "opencode/ling-3.0-flash-fin-free",
-    "opencode/muse-spark-1.2-contributor-free",
-  ]);
+  assert.equal(view.repairPasses, 1);
+  assert.equal("fallbacks" in view, false);
 });

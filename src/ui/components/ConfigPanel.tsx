@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   getOpenCodeConfig,
   openOpenCodeConfig,
@@ -13,14 +13,20 @@ export function ConfigPanel({
   hasUnsavedChanges,
   integration,
   integrationBusy,
+  settingsBusy,
+  makeRouterDefault,
   onConnect,
   onDisconnect,
+  onMakeRouterDefaultChange,
 }: {
   hasUnsavedChanges: boolean;
   integration: OpenCodeIntegrationStatus | null;
   integrationBusy: boolean;
+  settingsBusy: boolean;
+  makeRouterDefault: boolean;
   onConnect: () => void;
   onDisconnect: () => void;
+  onMakeRouterDefaultChange: (enabled: boolean) => void;
 }) {
   const [response, setResponse] = useState<OpenCodeConfigResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -29,18 +35,36 @@ export function ConfigPanel({
   const [pathCopied, setPathCopied] = useState(false);
   const [configAction, setConfigAction] = useState<"open" | "reveal" | "">("");
   const [advancedNotice, setAdvancedNotice] = useState("");
+  const previewRequestId = useRef(0);
+  const previewAllowed = useRef(true);
   const text = response ? configText(response) : "";
   const configPath = integration?.configPath ?? "";
 
+  previewAllowed.current = !hasUnsavedChanges && !settingsBusy;
+
+  useEffect(() => {
+    if (hasUnsavedChanges || settingsBusy) {
+      previewRequestId.current += 1;
+      setResponse(null);
+      setPreviewCopied(false);
+    }
+  }, [hasUnsavedChanges, settingsBusy]);
+
   const preview = async () => {
+    const requestId = ++previewRequestId.current;
     setLoading(true);
     setError("");
     try {
-      setResponse(await getOpenCodeConfig());
+      const next = await getOpenCodeConfig();
+      if (requestId === previewRequestId.current && previewAllowed.current) {
+        setResponse(next);
+      }
     } catch (previewError) {
-      setError(previewError instanceof Error ? previewError.message : "Configuration preview failed.");
+      if (requestId === previewRequestId.current && previewAllowed.current) {
+        setError(previewError instanceof Error ? previewError.message : "Configuration preview failed.");
+      }
     } finally {
-      setLoading(false);
+      if (requestId === previewRequestId.current) setLoading(false);
     }
   };
 
@@ -113,6 +137,21 @@ export function ConfigPanel({
         </span>
         <p>{integration?.message ?? "Checking the local OpenCode connection…"}</p>
       </div>
+      <label className="default-agent-control">
+        <input
+          checked={makeRouterDefault}
+          disabled={integrationBusy || settingsBusy}
+          onChange={(event) => onMakeRouterDefaultChange(event.target.checked)}
+          type="checkbox"
+        />
+        <span>
+          <strong>Open Omc-Router by default</strong>
+          <small>Applied only when OpenCode has no user-selected default. Existing defaults are preserved, and disconnect removes only a Model Control-owned setting.</small>
+        </span>
+      </label>
+      {integration?.defaultAgentPreserved ? (
+        <p className="advanced-config__hint">OpenCode currently keeps your existing default agent: <code>{integration.defaultAgent}</code>. Omc-Router remains available from the agent picker.</p>
+      ) : null}
       {hasUnsavedChanges ? <p className="inline-alert inline-alert--warning">Save your routing changes before connecting or updating OpenCode.</p> : null}
       <div className="button-row">
         <Button
@@ -167,8 +206,8 @@ export function ConfigPanel({
             </div>
           </div>
           <div className="button-row">
-            <Button disabled={hasUnsavedChanges || loading} icon="code" onClick={preview}>{loading ? "Generating…" : response ? "Refresh preview" : "Preview config"}</Button>
-            <Button disabled={!text || hasUnsavedChanges} icon="download" onClick={exportConfig}>Export generated</Button>
+            <Button disabled={hasUnsavedChanges || settingsBusy || loading} icon="code" onClick={preview}>{loading ? "Generating…" : response ? "Refresh preview" : "Preview config"}</Button>
+            <Button disabled={!text || hasUnsavedChanges || settingsBusy} icon="download" onClick={exportConfig}>Export generated</Button>
           </div>
           {response?.warnings?.length ? (
             <div className="config-warnings" role="status">

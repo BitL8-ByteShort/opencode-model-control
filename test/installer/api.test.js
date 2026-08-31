@@ -4,6 +4,8 @@ import { Readable } from "node:stream";
 
 import { handleApi } from "../../src/server/app.js";
 
+const MUTATION_SESSION_SECRET = "A".repeat(43);
+
 function request({ method = "GET", path, headers = {}, body = "" }) {
   const stream = Readable.from(body ? [Buffer.from(body)] : []);
   stream.method = method;
@@ -72,7 +74,9 @@ function serviceFixture() {
 async function dispatch(input, service) {
   const outgoing = response();
   try {
-    const handled = await handleApi(request(input), outgoing, service);
+    const handled = await handleApi(request(input), outgoing, service, {
+      mutationSessionSecret: MUTATION_SESSION_SECRET,
+    });
     assert.equal(handled, true);
   } catch (error) {
     return { error };
@@ -120,11 +124,35 @@ test("integration API protects install and uninstall writes", async () => {
   assert.equal(rejected.error.code, "REQUEST_MARKER_REQUIRED");
   assert.equal(calls.install, 0);
 
+  const forgedMarker = await dispatch(
+    {
+      method: "POST",
+      path: "/api/opencode/integration/install",
+      headers: {
+        "content-type": "application/json",
+        host: "127.0.0.1:47821",
+        origin: "http://127.0.0.1:47821",
+        "x-omc-request": "1",
+      },
+      body: "{}",
+    },
+    service,
+  );
+  assert.equal(forgedMarker.error.code, "SESSION_AUTHORIZATION_REQUIRED");
+  assert.match(forgedMarker.error.message, /read-only.*opencode-model-control/i);
+  assert.equal(calls.install, 0);
+
   const installed = await dispatch(
     {
       method: "POST",
       path: "/api/opencode/integration/install",
-      headers: { "content-type": "application/json", "x-omc-request": "1" },
+      headers: {
+        "content-type": "application/json",
+        host: "127.0.0.1:47821",
+        origin: "http://127.0.0.1:47821",
+        "x-omc-request": "1",
+        "x-omc-session": MUTATION_SESSION_SECRET,
+      },
       body: "{}",
     },
     service,
@@ -137,7 +165,13 @@ test("integration API protects install and uninstall writes", async () => {
     {
       method: "POST",
       path: "/api/opencode/integration/uninstall",
-      headers: { "content-type": "application/json", "x-omc-request": "1" },
+      headers: {
+        "content-type": "application/json",
+        host: "127.0.0.1:47821",
+        origin: "http://127.0.0.1:47821",
+        "x-omc-request": "1",
+        "x-omc-session": MUTATION_SESSION_SECRET,
+      },
       body: "{}",
     },
     service,
@@ -152,7 +186,12 @@ test("integration API requires JSON for mutations", async () => {
     {
       method: "POST",
       path: "/api/opencode/integration/install",
-      headers: { "x-omc-request": "1" },
+      headers: {
+        host: "127.0.0.1:47821",
+        origin: "http://127.0.0.1:47821",
+        "x-omc-request": "1",
+        "x-omc-session": MUTATION_SESSION_SECRET,
+      },
     },
     service,
   );
@@ -183,6 +222,7 @@ test("advanced config actions require trusted same-origin JSON mutations", async
         host: "127.0.0.1:47821",
         origin: "https://attacker.invalid",
         "x-omc-request": "1",
+        "x-omc-session": MUTATION_SESSION_SECRET,
       },
       body: "{}",
     },
@@ -200,6 +240,7 @@ test("advanced config actions require trusted same-origin JSON mutations", async
         host: "127.0.0.1:47821",
         origin: "http://127.0.0.1:47821",
         "x-omc-request": "1",
+        "x-omc-session": MUTATION_SESSION_SECRET,
       },
       body: "{}",
     },
@@ -218,8 +259,10 @@ test("advanced config API rejects caller-supplied paths", async () => {
       path: "/api/opencode/config/open",
       headers: {
         "content-type": "application/json",
-        host: "127.0.0.1",
+        host: "127.0.0.1:47821",
+        origin: "http://127.0.0.1:47821",
         "x-omc-request": "1",
+        "x-omc-session": MUTATION_SESSION_SECRET,
       },
       body: JSON.stringify({ path: "/tmp/attacker-selected.json" }),
     },

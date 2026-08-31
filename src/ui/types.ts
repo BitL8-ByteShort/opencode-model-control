@@ -69,6 +69,7 @@ export interface RouterSettings {
   modelControls: Record<string, ModelControl>;
   maxDelegationDepth: number;
   maxFallbacksPerAssignment: number;
+  makeRouterDefault: boolean;
   [key: string]: unknown;
 }
 
@@ -105,8 +106,14 @@ export interface RouteResponse {
   route?: string;
   primary?: string | { id?: string; model?: string; reason?: string };
   workers?: Array<string | { id?: string; model?: string; role?: string; reason?: string }>;
+  /** @deprecated Older route shapes used this for an unimplemented model fallback. */
   fallback?: string | string[] | null;
   assignments?: RouteAssignment[];
+  policy?: {
+    /** Legacy persisted name for the maximum review-driven repair passes. */
+    maxFallbacksPerAssignment?: number;
+    [key: string]: unknown;
+  };
   reasons?: string[];
   integrationWarning?: string | null;
   [key: string]: unknown;
@@ -115,7 +122,9 @@ export interface RouteResponse {
 export interface RouteAssignment {
   role?: string;
   modelId?: string;
+  /** Legacy route-contract field. The planner always returns null. */
   fallbackModelId?: string | null;
+  /** Legacy route-contract field. The planner always returns zero. */
   fallbackCount?: number;
   selection?: string;
   mayDelegate?: boolean;
@@ -142,6 +151,9 @@ export interface OpenCodeIntegrationStatus {
   message: string;
   changed?: boolean;
   backupCreated?: boolean;
+  defaultAgent?: string | null;
+  defaultAgentManaged?: boolean;
+  defaultAgentPreserved?: boolean;
 }
 
 export interface OpenCodeConfigActionResponse {
@@ -176,6 +188,37 @@ export interface BenchmarkSummary {
   roles?: BenchmarkRoleSummary[];
   caveats?: string[];
   [key: string]: unknown;
+}
+
+export interface RuntimeQualificationResult {
+  id: string;
+  modelId: string;
+  status: "passed" | "failed";
+  evidenceType: "runtime-access-only";
+  startedAt: string;
+  completedAt: string;
+  durationMs: number;
+  openCodeVersion: string | null;
+  providerRequestAttempted: boolean | null;
+  externalPluginsDisabled: true;
+  isolatedWorkingDirectory: true;
+  promptKind: "fixed-synthetic-sentinel";
+  responseMatched: boolean;
+  exitCode: number | null;
+  failure: { code: string; message: string } | null;
+}
+
+export interface RuntimeQualificationSummary {
+  schemaVersion: 1;
+  automatic: false;
+  action: "manual-provider-request";
+  evidenceType: "runtime-access-only";
+  benchmarkPromotion: false;
+  running: boolean;
+  warning: string | null;
+  updatedAt: string | null;
+  results: RuntimeQualificationResult[];
+  boundaries: string[];
 }
 
 export type UsageWindow = "7d" | "30d" | "90d" | "all";

@@ -15,7 +15,11 @@ export type IconName =
   | "check"
   | "lock"
   | "image"
-  | "arrow";
+  | "arrow"
+  | "menu"
+  | "close"
+  | "panel-close"
+  | "panel-open";
 
 const paths: Record<IconName, ReactNode> = {
   overview: <><path d="M3 10.8 12 3l9 7.8"/><path d="M5.5 9.2V21h13V9.2M9 21v-6h6v6"/></>,
@@ -33,6 +37,10 @@ const paths: Record<IconName, ReactNode> = {
   lock: <><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></>,
   image: <><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 20"/></>,
   arrow: <><path d="M5 12h14M14 7l5 5-5 5"/></>,
+  menu: <><path d="M4 6h16M4 12h16M4 18h16"/></>,
+  close: <><path d="m6 6 12 12M18 6 6 18"/></>,
+  "panel-close": <><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18m7-13-4 4 4 4"/></>,
+  "panel-open": <><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18m3 5 4 4-4 4"/></>,
 };
 
 export function Icon({ name, size = 18 }: { name: IconName; size?: number }) {
