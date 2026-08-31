@@ -5,8 +5,8 @@ This matrix separates implemented behavior from compatibility that still needs l
 | Surface | Status | Boundary |
 | --- | --- | --- |
 | Node.js `^20.19.0` or `>=22.12.0` | Supported by package contract | `npm run verify` is the release gate. |
-| Canonical public repository | Supported | Public source: `https://github.com/BitL8-ByteShort/opencode-model-control`; a versioned package artifact stored in the immutable release tag is the initial distribution channel. |
-| npm registry package | Not yet published | Package metadata and an unclaimed registry name are not publication evidence. Use the pinned GitHub tag until a registry artifact is linked from the README. |
+| Canonical public repository | Supported | Public source: `https://github.com/BitL8-ByteShort/opencode-model-control`; releases include tagged source and a checksum-recorded package artifact. |
+| npm registry package | Published; `0.1.2` clean-install verified on macOS | Exact public version: [`opencode-model-control@0.1.2`](https://www.npmjs.com/package/opencode-model-control/v/0.1.2). Registry integrity matches the tested tarball; Linux acceptance remains separate. |
 | OpenCode 1.18.x custom agents | Targeted | Managed config uses the 1.18.x `agent` and local MCP surfaces. |
 | OpenCode 1.18.22 on macOS | Parser, discovery, connect, MCP handshake, and disconnect tested | Isolated acceptance does not invoke a model or prove a provider session. |
 | Later OpenCode configuration majors | Unverified | Schema or agent semantics may change; support requires explicit tests. |

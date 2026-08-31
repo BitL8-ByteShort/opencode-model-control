@@ -1,6 +1,6 @@
 # Release packages
 
-This directory temporarily carries verified package artifacts until the npm registry distribution is configured and independently accepted.
+This directory carries checksum-recorded copies of verified public release packages. npm is the default install channel after registry verification; these tarballs remain available for version-pinned direct installation and independent checksum comparison.
 
 Each tarball is produced with `npm pack` only after the full release gate passes. Its filename, version, and SHA-256 digest are recorded here so users can verify a direct download before installation.
 
