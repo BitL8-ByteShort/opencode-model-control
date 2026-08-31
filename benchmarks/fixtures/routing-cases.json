@@ -1,0 +1,153 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "id": "small-cohesive-direct",
+      "task": {
+        "kind": "general",
+        "complexity": "small",
+        "modalities": ["text"],
+        "access": "write",
+        "cohesive": true,
+        "delegationDepth": 0
+      },
+      "expected": {
+        "route": "direct",
+        "assignments": [
+          {
+            "role": "orchestrator",
+            "modelId": "opencode/big-pickle"
+          }
+        ]
+      }
+    },
+    {
+      "id": "bounded-code-worker",
+      "task": {
+        "kind": "code",
+        "complexity": "medium",
+        "modalities": ["text"],
+        "access": "write",
+        "delegationDepth": 0
+      },
+      "expected": {
+        "route": "code-worker",
+        "assignments": [
+          {
+            "role": "orchestrator",
+            "modelId": "opencode/big-pickle"
+          },
+          {
+            "role": "code-worker",
+            "modelId": "opencode/ling-3.0-flash-fin-free"
+          }
+        ]
+      }
+    },
+    {
+      "id": "image-understanding-worker",
+      "task": {
+        "kind": "vision",
+        "complexity": "medium",
+        "modalities": ["text", "image"],
+        "access": "read",
+        "delegationDepth": 0
+      },
+      "expected": {
+        "route": "vision-worker",
+        "assignments": [
+          {
+            "role": "orchestrator",
+            "modelId": "opencode/big-pickle"
+          },
+          {
+            "role": "vision-worker",
+            "modelId": "opencode/mimo-v2.5-free"
+          }
+        ]
+      }
+    },
+    {
+      "id": "read-only-reviewer",
+      "task": {
+        "kind": "review",
+        "complexity": "medium",
+        "modalities": ["text"],
+        "access": "read",
+        "delegationDepth": 0
+      },
+      "expected": {
+        "route": "reviewer",
+        "assignments": [
+          {
+            "role": "orchestrator",
+            "modelId": "opencode/big-pickle"
+          },
+          {
+            "role": "reviewer",
+            "modelId": "opencode/nemotron-3-ultra-free"
+          }
+        ]
+      }
+    },
+    {
+      "id": "mixed-specialist-orchestration",
+      "task": {
+        "kind": "mixed",
+        "complexity": "large",
+        "modalities": ["text", "image"],
+        "access": "write",
+        "requiresReview": true,
+        "delegationDepth": 0
+      },
+      "expected": {
+        "route": "orchestrator",
+        "assignments": [
+          {
+            "role": "orchestrator",
+            "modelId": "opencode/big-pickle"
+          },
+          {
+            "role": "code-worker",
+            "modelId": "opencode/ling-3.0-flash-fin-free"
+          },
+          {
+            "role": "vision-worker",
+            "modelId": "opencode/mimo-v2.5-free"
+          },
+          {
+            "role": "reviewer",
+            "modelId": "opencode/nemotron-3-ultra-free"
+          }
+        ]
+      }
+    },
+    {
+      "id": "image-assisted-code-orchestration",
+      "task": {
+        "kind": "code",
+        "complexity": "medium",
+        "modalities": ["image", "text"],
+        "access": "write",
+        "delegationDepth": 0
+      },
+      "expected": {
+        "route": "orchestrator",
+        "assignments": [
+          {
+            "role": "orchestrator",
+            "modelId": "opencode/big-pickle"
+          },
+          {
+            "role": "code-worker",
+            "modelId": "opencode/ling-3.0-flash-fin-free"
+          },
+          {
+            "role": "vision-worker",
+            "modelId": "opencode/mimo-v2.5-free"
+          }
+        ]
+      }
+    }
+  ]
+}

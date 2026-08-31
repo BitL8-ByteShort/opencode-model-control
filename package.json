@@ -1,0 +1,75 @@
+{
+  "name": "opencode-model-control",
+  "version": "0.1.0",
+  "description": "A local model routing control panel and MCP companion for OpenCode.",
+  "keywords": [
+    "opencode",
+    "mcp",
+    "model-router",
+    "model-routing",
+    "local-first",
+    "ai"
+  ],
+  "author": "Jorvek AI Solutions",
+  "homepage": "https://github.com/BitL8-ByteShort/opencode-model-control#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/BitL8-ByteShort/opencode-model-control.git"
+  },
+  "bugs": {
+    "url": "https://github.com/BitL8-ByteShort/opencode-model-control/issues"
+  },
+  "type": "module",
+  "license": "MIT",
+  "private": false,
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  },
+  "bin": {
+    "opencode-model-control": "bin/opencode-model-control.js"
+  },
+  "files": [
+    "bin",
+    "data",
+    "dist",
+    "docs",
+    "!docs/assets/control-panel-concept.png",
+    "examples",
+    "src",
+    "CHANGELOG.md",
+    "CODE_OF_CONDUCT.md",
+    "CONTRIBUTING.md",
+    "LICENSE",
+    "README.md",
+    "SECURITY.md"
+  ],
+  "scripts": {
+    "build": "vite build",
+    "check": "tsc --noEmit",
+    "dev": "node src/server/index.js --dev",
+    "mcp": "node src/mcp/index.js",
+    "prepack": "npm run verify",
+    "start": "node bin/opencode-model-control.js",
+    "test": "node --test",
+    "verify": "npm run check && npm test && npm run build"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/client": "2.0.0",
+    "@types/node": "26.4.0",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.5",
+    "@vitejs/plugin-react": "6.1.1",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "typescript": "7.0.2",
+    "vite": "8.2.2"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server": "2.0.0",
+    "jsonc-parser": "3.3.1",
+    "zod": "4.5.4"
+  }
+}

@@ -1,0 +1,130 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opencode-model-control.local/schemas/model-catalog.schema.json",
+  "title": "OpenCode Model Control Catalog",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "snapshotDate", "models"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "snapshotDate": { "type": "string", "format": "date" },
+    "models": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/model" }
+    }
+  },
+  "$defs": {
+    "modelId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._:+/-]*$"
+    },
+    "model": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "label",
+        "status",
+        "provisional",
+        "enabledByDefault",
+        "available",
+        "contextWindowTokens",
+        "free",
+        "modalities",
+        "access",
+        "canOrchestrate",
+        "roles"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/modelId" },
+        "label": { "type": "string", "minLength": 1 },
+        "status": { "enum": ["active", "provisional"] },
+        "provisional": { "type": "boolean" },
+        "enabledByDefault": { "type": "boolean" },
+        "available": { "type": "boolean" },
+        "contextWindowTokens": {
+          "oneOf": [
+            { "type": "integer", "minimum": 1 },
+            { "type": "null" }
+          ]
+        },
+        "free": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "verified",
+            "inputUsdPerMillion",
+            "outputUsdPerMillion",
+            "verifiedAt"
+          ],
+          "properties": {
+            "verified": { "type": "boolean" },
+            "inputUsdPerMillion": { "type": ["number", "null"], "minimum": 0 },
+            "outputUsdPerMillion": { "type": ["number", "null"], "minimum": 0 },
+            "verifiedAt": { "type": ["string", "null"], "format": "date" }
+          }
+        },
+        "modalities": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["input", "output"],
+          "properties": {
+            "input": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": { "enum": ["text", "image", "audio", "video", "pdf"] }
+            },
+            "output": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": { "enum": ["text", "image", "audio", "video", "pdf"] }
+            }
+          }
+        },
+        "access": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "enum": ["read", "write"] }
+        },
+        "canOrchestrate": { "type": "boolean" },
+        "toolCall": { "type": "boolean" },
+        "provider": { "type": "string", "minLength": 1 },
+        "profileSource": { "type": "string", "minLength": 1 },
+        "discovered": { "type": "boolean" },
+        "runtimeVerified": { "type": "boolean" },
+        "evidence": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status"],
+          "properties": {
+            "status": { "enum": ["qualified", "candidate", "capability-only", "provisional", "unverified"] },
+            "source": { "type": "string", "minLength": 1 },
+            "verifiedAt": { "type": ["string", "null"], "format": "date" }
+          }
+        },
+        "quality": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "orchestrator": { "type": "number", "minimum": 0, "maximum": 100 },
+            "code-worker": { "type": "number", "minimum": 0, "maximum": 100 },
+            "vision-worker": { "type": "number", "minimum": 0, "maximum": 100 },
+            "reviewer": { "type": "number", "minimum": 0, "maximum": 100 }
+          }
+        },
+        "roles": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "orchestrator": { "type": "integer", "minimum": 0, "maximum": 100 },
+            "code-worker": { "type": "integer", "minimum": 0, "maximum": 100 },
+            "vision-worker": { "type": "integer", "minimum": 0, "maximum": 100 },
+            "reviewer": { "type": "integer", "minimum": 0, "maximum": 100 }
+          }
+        }
+      }
+    }
+  }
+}

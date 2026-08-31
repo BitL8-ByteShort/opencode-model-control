@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opencode-model-control.local/schemas/routing-cases.schema.json",
+  "title": "OpenCode Model Control Routing Cases",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "cases"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/case" }
+    }
+  },
+  "$defs": {
+    "modelId": {
+      "enum": [
+        "opencode/big-pickle",
+        "opencode/ling-3.0-flash-fin-free",
+        "opencode/mimo-v2.5-free",
+        "opencode/muse-spark-1.2-contributor-free",
+        "opencode/nemotron-3-ultra-free",
+        "opencode/nemotron-3.5-lightning-free"
+      ]
+    },
+    "task": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "complexity", "modalities", "access", "delegationDepth"],
+      "properties": {
+        "kind": { "enum": ["general", "code", "vision", "review", "mixed"] },
+        "complexity": { "enum": ["small", "medium", "large"] },
+        "modalities": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "enum": ["text", "image", "audio", "video", "pdf"] }
+        },
+        "access": { "enum": ["read", "write"] },
+        "cohesive": { "type": "boolean" },
+        "requiresReview": { "type": "boolean" },
+        "delegationDepth": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "expectedAssignment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "modelId"],
+      "properties": {
+        "role": { "enum": ["orchestrator", "code-worker", "vision-worker", "reviewer"] },
+        "modelId": { "$ref": "#/$defs/modelId" }
+      }
+    },
+    "case": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "task", "expected"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+        "task": { "$ref": "#/$defs/task" },
+        "expected": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["route", "assignments"],
+          "properties": {
+            "route": { "enum": ["direct", "orchestrator", "code-worker", "vision-worker", "reviewer"] },
+            "assignments": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 4,
+              "items": { "$ref": "#/$defs/expectedAssignment" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

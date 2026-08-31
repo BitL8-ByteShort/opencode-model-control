@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opencode-model-control.local/schemas/route-plan.schema.json",
+  "title": "OpenCode Model Control Route Plan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "route", "assignments", "policy", "reasons"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "route": { "enum": ["direct", "orchestrator", "code-worker", "vision-worker", "reviewer"] },
+    "assignments": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 4,
+      "items": { "$ref": "#/$defs/assignment" }
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["freeOnly", "costPreference", "costPolicy", "maxDelegationDepth", "maxFallbacksPerAssignment", "recursiveDelegation"],
+      "properties": {
+        "freeOnly": { "type": "boolean" },
+        "costPreference": { "enum": ["free-first", "paid-first"] },
+        "costPolicy": { "enum": ["free-only", "known-cost"] },
+        "maxDelegationDepth": { "type": "integer", "minimum": 0, "maximum": 1 },
+        "maxFallbacksPerAssignment": { "type": "integer", "minimum": 0, "maximum": 1 },
+        "recursiveDelegation": { "const": false }
+      }
+    },
+    "reasons": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 8,
+      "items": { "type": "string", "minLength": 1, "maxLength": 128 }
+    }
+  },
+  "$defs": {
+    "modelId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._:+/-]*$"
+    },
+    "assignment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "role",
+        "modelId",
+        "fallbackModelId",
+        "fallbackCount",
+        "selection",
+        "access",
+        "modalities",
+        "mayDelegate"
+      ],
+      "properties": {
+        "role": { "enum": ["orchestrator", "code-worker", "vision-worker", "reviewer"] },
+        "modelId": { "$ref": "#/$defs/modelId" },
+        "fallbackModelId": {
+          "oneOf": [
+            { "$ref": "#/$defs/modelId" },
+            { "type": "null" }
+          ]
+        },
+        "fallbackCount": { "type": "integer", "minimum": 0, "maximum": 1 },
+        "selection": { "enum": ["auto", "explicit"] },
+        "access": { "enum": ["read", "write"] },
+        "modalities": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "enum": ["text", "image", "audio", "video", "pdf"] }
+        },
+        "mayDelegate": { "type": "boolean" }
+      }
+    }
+  }
+}

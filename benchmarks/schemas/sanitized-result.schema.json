@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opencode-model-control.local/schemas/sanitized-result.schema.json",
+  "title": "OpenCode Model Control Sanitized Result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "status",
+    "modelId",
+    "role",
+    "summary",
+    "terminalSeen",
+    "attemptCount",
+    "artifacts",
+    "metrics",
+    "errors"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "status": { "enum": ["completed", "failed", "blocked", "timed-out", "cancelled"] },
+    "modelId": {
+      "oneOf": [
+        { "type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]*/[a-zA-Z0-9][a-zA-Z0-9._:+/-]*$" },
+        { "type": "null" }
+      ]
+    },
+    "role": {
+      "oneOf": [
+        { "enum": ["orchestrator", "code-worker", "vision-worker", "reviewer"] },
+        { "type": "null" }
+      ]
+    },
+    "summary": { "type": "string", "maxLength": 2000 },
+    "terminalSeen": { "type": "boolean" },
+    "attemptCount": { "type": "integer", "minimum": 0, "maximum": 2 },
+    "artifacts": {
+      "type": "array",
+      "maxItems": 50,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "kind"],
+        "properties": {
+          "path": { "type": "string", "minLength": 1, "maxLength": 1024 },
+          "kind": { "enum": ["file", "directory", "report", "image", "log"] }
+        }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "durationMs": { "type": "number", "minimum": 0 },
+        "inputTokens": { "type": "number", "minimum": 0 },
+        "cachedInputTokens": { "type": "number", "minimum": 0 },
+        "outputTokens": { "type": "number", "minimum": 0 },
+        "reasoningTokens": { "type": "number", "minimum": 0 },
+        "requestCount": { "type": "number", "minimum": 0 },
+        "retryCount": { "type": "number", "minimum": 0 }
+      }
+    },
+    "errors": {
+      "type": "array",
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "message"],
+        "properties": {
+          "code": { "type": "string", "pattern": "^[A-Z0-9_]{1,64}$" },
+          "message": { "type": "string", "maxLength": 500 }
+        }
+      }
+    }
+  }
+}

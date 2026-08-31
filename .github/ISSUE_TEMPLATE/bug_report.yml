@@ -1,0 +1,54 @@
+name: Bug report
+description: Report a reproducible problem without sharing secrets or private project data.
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for helping improve OpenCode Model Control. Never paste credentials, provider tokens, private prompts, customer data, or your complete OpenCode configuration.
+  - type: input
+    id: version
+    attributes:
+      label: Model Control version
+      placeholder: 0.1.0
+    validations:
+      required: true
+  - type: input
+    id: opencode-version
+    attributes:
+      label: OpenCode version
+      placeholder: 1.18.22
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - macOS
+        - Linux
+        - Windows via WSL
+        - Native Windows (not yet supported)
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Include the expected result and the smallest reproducible sequence.
+    validations:
+      required: true
+  - type: textarea
+    id: sanitized-output
+    attributes:
+      label: Sanitized output
+      description: Remove usernames, absolute paths, credentials, tokens, private prompts, and customer data.
+      render: shell
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety check
+      options:
+        - label: I checked this report and its attachments for secrets and private data.
+          required: true

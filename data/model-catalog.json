@@ -1,0 +1,159 @@
+{
+  "schemaVersion": 1,
+  "snapshotDate": "2026-08-30",
+  "models": [
+    {
+      "id": "opencode/big-pickle",
+      "label": "Big Pickle",
+      "status": "active",
+      "provisional": false,
+      "enabledByDefault": true,
+      "available": true,
+      "contextWindowTokens": 200000,
+      "free": {
+        "verified": true,
+        "inputUsdPerMillion": 0,
+        "outputUsdPerMillion": 0,
+        "verifiedAt": "2026-08-30"
+      },
+      "modalities": {
+        "input": ["text"],
+        "output": ["text"]
+      },
+      "access": ["read", "write"],
+      "canOrchestrate": true,
+      "roles": {
+        "orchestrator": 100,
+        "reviewer": 60
+      }
+    },
+    {
+      "id": "opencode/ling-3.0-flash-fin-free",
+      "label": "Ling 3.0 Flash Fin Free",
+      "status": "active",
+      "provisional": false,
+      "enabledByDefault": true,
+      "available": true,
+      "contextWindowTokens": 262144,
+      "free": {
+        "verified": true,
+        "inputUsdPerMillion": 0,
+        "outputUsdPerMillion": 0,
+        "verifiedAt": "2026-08-30"
+      },
+      "modalities": {
+        "input": ["text"],
+        "output": ["text"]
+      },
+      "access": ["read", "write"],
+      "canOrchestrate": true,
+      "roles": {
+        "orchestrator": 70,
+        "code-worker": 100,
+        "reviewer": 50
+      }
+    },
+    {
+      "id": "opencode/mimo-v2.5-free",
+      "label": "MiMo V2.5 Free",
+      "status": "active",
+      "provisional": false,
+      "enabledByDefault": true,
+      "available": true,
+      "contextWindowTokens": 200000,
+      "free": {
+        "verified": true,
+        "inputUsdPerMillion": 0,
+        "outputUsdPerMillion": 0,
+        "verifiedAt": "2026-08-30"
+      },
+      "modalities": {
+        "input": ["text", "image", "audio", "video"],
+        "output": ["text"]
+      },
+      "access": ["read", "write"],
+      "canOrchestrate": false,
+      "roles": {
+        "code-worker": 70,
+        "vision-worker": 100,
+        "reviewer": 75
+      }
+    },
+    {
+      "id": "opencode/muse-spark-1.2-contributor-free",
+      "label": "Muse Spark 1.2 Contributor Free",
+      "status": "provisional",
+      "provisional": true,
+      "enabledByDefault": false,
+      "available": true,
+      "contextWindowTokens": 1048576,
+      "free": {
+        "verified": true,
+        "inputUsdPerMillion": 0,
+        "outputUsdPerMillion": 0,
+        "verifiedAt": "2026-08-30"
+      },
+      "modalities": {
+        "input": ["text", "image", "audio", "video", "pdf"],
+        "output": ["text"]
+      },
+      "access": ["read", "write"],
+      "canOrchestrate": true,
+      "roles": {
+        "orchestrator": 75,
+        "code-worker": 65,
+        "vision-worker": 80,
+        "reviewer": 85
+      }
+    },
+    {
+      "id": "opencode/nemotron-3-ultra-free",
+      "label": "Nemotron 3 Ultra Free",
+      "status": "active",
+      "provisional": false,
+      "enabledByDefault": true,
+      "available": true,
+      "contextWindowTokens": 1000000,
+      "free": {
+        "verified": true,
+        "inputUsdPerMillion": 0,
+        "outputUsdPerMillion": 0,
+        "verifiedAt": "2026-08-30"
+      },
+      "modalities": {
+        "input": ["text"],
+        "output": ["text"]
+      },
+      "access": ["read"],
+      "canOrchestrate": false,
+      "roles": {
+        "reviewer": 100
+      }
+    },
+    {
+      "id": "opencode/nemotron-3.5-lightning-free",
+      "label": "Nemotron 3.5 Lightning Free",
+      "status": "active",
+      "provisional": false,
+      "enabledByDefault": true,
+      "available": true,
+      "contextWindowTokens": 262144,
+      "free": {
+        "verified": true,
+        "inputUsdPerMillion": 0,
+        "outputUsdPerMillion": 0,
+        "verifiedAt": "2026-08-30"
+      },
+      "modalities": {
+        "input": ["text"],
+        "output": ["text"]
+      },
+      "access": ["read", "write"],
+      "canOrchestrate": false,
+      "roles": {
+        "code-worker": 90,
+        "reviewer": 70
+      }
+    }
+  ]
+}

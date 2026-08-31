@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opencode-model-control.local/schemas/router-settings.schema.json",
+  "title": "OpenCode Model Control Settings",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "costPreference",
+    "costPolicy",
+    "roleAssignments",
+    "maxDelegationDepth",
+    "maxFallbacksPerAssignment",
+    "modelControls"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 2 },
+    "costPreference": { "enum": ["free-first", "paid-first"] },
+    "costPolicy": { "enum": ["free-only", "known-cost"] },
+    "roleAssignments": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["orchestrator", "code-worker", "vision-worker", "reviewer"],
+      "properties": {
+        "orchestrator": { "$ref": "#/$defs/assignment" },
+        "code-worker": { "$ref": "#/$defs/assignment" },
+        "vision-worker": { "$ref": "#/$defs/assignment" },
+        "reviewer": { "$ref": "#/$defs/assignment" }
+      }
+    },
+    "maxDelegationDepth": { "type": "integer", "minimum": 0, "maximum": 1 },
+    "maxFallbacksPerAssignment": { "type": "integer", "minimum": 0, "maximum": 1 },
+    "modelControls": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": { "$ref": "#/$defs/modelId" },
+      "additionalProperties": { "$ref": "#/$defs/control" }
+    }
+  },
+  "$defs": {
+    "assignment": {
+      "oneOf": [
+        { "const": "auto" },
+        { "$ref": "#/$defs/modelId" }
+      ]
+    },
+    "modelId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._:+/-]*$"
+    },
+    "control": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "available"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "available": { "type": "boolean" }
+      }
+    }
+  }
+}
