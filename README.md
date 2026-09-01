@@ -8,7 +8,7 @@ The control panel runs on `127.0.0.1`. OpenCode remains responsible for provider
 
 The running app is authoritative for model names, availability, pricing evidence, and role eligibility.
 
-> **Release status:** This source tree is prepared as version `0.2.1`. A version in `package.json` is not proof that a distribution channel is live; verify the exact [npm version](https://www.npmjs.com/package/opencode-model-control/v/0.2.1) or [GitHub release](https://github.com/BitL8-ByteShort/opencode-model-control/releases/tag/v0.2.1) before installing. The [source repository](https://github.com/BitL8-ByteShort/opencode-model-control) is public. Linux fresh-install acceptance remains separately tracked and is not inferred from publication.
+> **Release status:** Version `0.2.1` is publicly available from the verified [npm package](https://www.npmjs.com/package/opencode-model-control/v/0.2.1) and [immutable GitHub release](https://github.com/BitL8-ByteShort/opencode-model-control/releases/tag/v0.2.1). The public registry tarball and GitHub release asset match the same final tested package artifact. The [source repository](https://github.com/BitL8-ByteShort/opencode-model-control) is public. Linux fresh-install acceptance remains separately tracked and is not inferred from publication.
 
 ## What it does
 
