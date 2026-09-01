@@ -1,6 +1,6 @@
 {
   "name": "opencode-model-control",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "A local model routing control panel and MCP companion for OpenCode.",
   "keywords": [
     "opencode",

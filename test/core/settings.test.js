@@ -171,6 +171,47 @@ test("known-cost settings permit an explicit paid model from the active catalog"
   assert.equal(settings.costPolicy, "known-cost");
 });
 
+test("explicit paid and free assignments reject a zero role score", () => {
+  const catalog = structuredClone(loadModelCatalog());
+  const free = structuredClone(catalog.models[1]);
+  free.id = "provider/zero-score-free";
+  free.label = "Zero Score Free";
+  free.roles = { "code-worker": 0 };
+  const paid = structuredClone(free);
+  paid.id = "provider/zero-score-paid";
+  paid.label = "Zero Score Paid";
+  paid.free.inputUsdPerMillion = 0.25;
+  paid.free.outputUsdPerMillion = 1;
+  catalog.models.push(free, paid);
+
+  const base = createDefaultSettings(catalog);
+  for (const [model, costPreference, costPolicy] of [
+    [free, "free-first", "free-only"],
+    [paid, "paid-first", "known-cost"],
+  ]) {
+    assert.throws(
+      () =>
+        validateSettings(
+          {
+            ...base,
+            costPreference,
+            costPolicy,
+            roleAssignments: {
+              ...base.roleAssignments,
+              "code-worker": model.id,
+            },
+            modelControls: {
+              ...base.modelControls,
+              [model.id]: { enabled: true, available: true },
+            },
+          },
+          catalog,
+        ),
+      (error) => error.code === "INVALID_ROLE_ASSIGNMENT",
+    );
+  }
+});
+
 test("default settings degrade unavailable explicit defaults to automatic selection", () => {
   const catalog = loadModelCatalog({
     liveAvailability: {

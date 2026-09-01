@@ -1,6 +1,6 @@
 # OpenCode Model Control
 
-![OpenCode Model Control — Route smarter. Stay in control.](https://raw.githubusercontent.com/BitL8-ByteShort/opencode-model-control/v0.2.0/docs/assets/opencode-model-control-banner.png)
+![OpenCode Model Control — Route smarter. Stay in control.](https://raw.githubusercontent.com/BitL8-ByteShort/opencode-model-control/v0.2.1/docs/assets/opencode-model-control-banner.png)
 
 OpenCode Model Control is a local control panel and MCP companion for building a model team inside OpenCode. It discovers the models OpenCode currently exposes, lets the user decide which ones the router may use, assigns an orchestrator and specialist roles, and safely connects that policy to OpenCode.
 
@@ -8,13 +8,13 @@ The control panel runs on `127.0.0.1`. OpenCode remains responsible for provider
 
 The running app is authoritative for model names, availability, pricing evidence, and role eligibility.
 
-> **Release status:** Version `0.2.0` is published on [npm](https://www.npmjs.com/package/opencode-model-control/v/0.2.0) and as an [immutable GitHub release](https://github.com/BitL8-ByteShort/opencode-model-control/releases/tag/v0.2.0). Both channels serve the same verified tarball with SHA-256 `59c6094a9b7dd57b897ee59c41269b154861de408db7c138c22725d17a1e67df`. The [source repository](https://github.com/BitL8-ByteShort/opencode-model-control) is public. Linux fresh-install acceptance remains separately tracked and is not inferred from publication.
+> **Release status:** This source tree is prepared as version `0.2.1`. A version in `package.json` is not proof that a distribution channel is live; verify the exact [npm version](https://www.npmjs.com/package/opencode-model-control/v/0.2.1) or [GitHub release](https://github.com/BitL8-ByteShort/opencode-model-control/releases/tag/v0.2.1) before installing. The [source repository](https://github.com/BitL8-ByteShort/opencode-model-control) is public. Linux fresh-install acceptance remains separately tracked and is not inferred from publication.
 
 ## What it does
 
 - Reads OpenCode's resolved, all-provider model catalog rather than relying on a fixed list.
 - Provides an **Update available models** action that runs a fresh OpenCode catalog refresh.
-- Separates OpenCode discovery from Model Control enablement: newly discovered models are visible but disabled for routing until the user enables them.
+- Separates OpenCode discovery from Model Control enablement: newly discovered models are visible but disabled for routing until the user enables one in Models or explicitly selects it for a compatible role.
 - Provides a **Free / Paid** preference:
   - **Free** permits only independently verified zero-cost models.
   - **Paid** permits verified free and known paid models, prioritizing paid models for compatible automatic assignments.
@@ -51,16 +51,16 @@ The panel can open without OpenCode, but it cannot discover the user's current m
 Install the exact npm version:
 
 ```sh
-npm install --global opencode-model-control@0.2.0
+npm install --global opencode-model-control@0.2.1
 opencode-model-control
 ```
 
-The first command installs `0.2.0` and its runtime dependencies. The second command starts the local panel and opens it in the default browser.
+The first command installs `0.2.1` and its runtime dependencies. The second command starts the local panel and opens it in the default browser.
 
 Then:
 
 1. Click **Update available models** to read the models currently exposed by OpenCode.
-2. Choose **Free** or **Paid**, enable the models Model Control is allowed to route to, choose whether Omc-Router should become the default agent, and save.
+2. Choose **Free** or **Paid**, then enable models in Models or explicitly select compatible models for roles. A role selection enables only that chosen model. Choose whether Omc-Router should become the default agent, then save.
 3. Click **Connect to OpenCode**.
 4. Restart OpenCode so it loads the managed MCP, local routing plugin, and `omc-*` agents.
 
@@ -71,12 +71,12 @@ No JSON editing is required. Connect creates a private backup, safely merges onl
 Close OpenCode and stop the running Model Control process with `Ctrl+C`, then run:
 
 ```sh
-npm install --global opencode-model-control@0.2.0
+npm install --global opencode-model-control@0.2.1
 opencode-model-control --version
 opencode-model-control
 ```
 
-The version command must print `0.2.0`. In the reopened panel, click **Update available models**, review the Free/Paid preference and enabled models, click **Save changes**, then click **Update connection**. If the panel says it is disconnected, use **Connect to OpenCode** instead. Restart OpenCode and verify the managed connection:
+The version command must print `0.2.1`. In the reopened panel, click **Update available models**, review the Free/Paid preference and enabled models, click **Save changes**, then click **Update connection**. If the panel says it is disconnected, use **Connect to OpenCode** instead. Restart OpenCode and verify the managed connection:
 
 ```sh
 opencode-model-control status --json
@@ -98,7 +98,7 @@ Then:
 
 1. Open the local panel (normally `http://127.0.0.1:47821`).
 2. Click **Update available models** to re-read all models exposed by OpenCode's resolved provider configuration.
-3. Choose **Free** or **Paid**, enable the models Model Control is allowed to route to, choose whether Omc-Router should become the default agent, and save.
+3. Choose **Free** or **Paid**, then enable models in Models or explicitly select compatible models for roles. A role selection enables only that chosen model. Choose whether Omc-Router should become the default agent, then save.
 4. Click **Connect to OpenCode**.
 5. Restart OpenCode so it loads the managed MCP, local routing plugin, and `omc-*` agents.
 
@@ -111,11 +111,11 @@ The connector writes absolute Node and package CLI paths, so a source checkout d
 To install the same tested tarball directly from GitHub:
 
 ```sh
-npm install --global https://github.com/BitL8-ByteShort/opencode-model-control/releases/download/v0.2.0/opencode-model-control-0.2.0.tgz
+npm install --global https://github.com/BitL8-ByteShort/opencode-model-control/releases/download/v0.2.1/opencode-model-control-0.2.1.tgz
 opencode-model-control
 ```
 
-The release publishes `opencode-model-control-0.2.0.tgz.sha256` beside the tarball. The checksum and source tag are also recorded in the public [release package ledger](https://github.com/BitL8-ByteShort/opencode-model-control/blob/v0.2.0/packages/README.md).
+The release publishes `opencode-model-control-0.2.1.tgz.sha256` beside the tarball. The checksum and source tag are also recorded in the public [release package ledger](https://github.com/BitL8-ByteShort/opencode-model-control/blob/v0.2.1/packages/README.md).
 
 ## What “Update available models” means
 
@@ -128,7 +128,7 @@ OpenCode 1.18.x may add its standard `$schema` property when its CLI reads a pro
 Catalog state is deliberately split into four concepts:
 
 - **Discovered:** OpenCode reported the model.
-- **Enabled in Model Control:** the user permits this router to select it. Newly discovered models start disabled here even if OpenCode exposes them.
+- **Enabled in Model Control:** the user permits this router to select it. Newly discovered models start disabled even if OpenCode exposes them. Selecting an available, cost-allowed, compatible model in a role dropdown is an explicit opt-in that enables that one model; choosing Automatic never enables models.
 - **Available:** the refreshed metadata reports it active.
 - **Runtime access checked:** a manually confirmed bounded synthetic OpenCode run returned the expected sentinel. OpenCode may have retried a provider failure during that run. Refresh does not make this claim or incur a model charge, and a runtime-access pass is not benchmark evidence.
 
@@ -141,6 +141,8 @@ The two cost choices set both priority and permission. They never override task 
 - **Free** means `free-first + free-only`. Only models with independently verified zero input and output pricing may be selected automatically.
 - **Paid** means `paid-first + known-cost`. Known-paid models are preferred for compatible automatic assignments, but verified-free models remain eligible automatic candidates. It is not a paid-only mode.
 - **Unknown pricing** is blocked in both modes. A name ending in `-free` or a zero normalized by OpenCode is not enough evidence by itself.
+
+Paid mode grants permission but does not silently enable every discovered paid model. A compatible disabled model is marked **enable on selection** in role dropdowns; selecting it enables that exact model in the draft, and **Save changes** remains the commit point.
 
 Selecting **Paid** can incur charges under the active OpenCode provider account. Model Control does not set or enforce provider-side budgets.
 

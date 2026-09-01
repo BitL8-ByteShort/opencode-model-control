@@ -58,7 +58,7 @@ Pricing has three classes:
 
 OpenCode may normalize absent price fields to zero. Therefore a zero from arbitrary CLI metadata is not, by itself, proof of free access.
 
-The UI maps **Free** to `free-first + free-only`. It maps **Paid** to `paid-first + known-cost`. Paid mode permits both verified-free and known-paid models but prefers paid candidates after capability, availability, enablement, and qualified-evidence gates. Unknown pricing is never eligible.
+The UI maps **Free** to `free-first + free-only`. It maps **Paid** to `paid-first + known-cost`. Paid mode permits both verified-free and known-paid models but prefers paid candidates after capability, availability, enablement, and qualified-evidence gates. Unknown pricing is never eligible. A deliberate compatible role selection is also an explicit model opt-in: it enables only that selected model in the unsaved draft. Automatic routing never enables models.
 
 ### Route planner
 

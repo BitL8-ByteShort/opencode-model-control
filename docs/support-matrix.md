@@ -24,9 +24,9 @@ This matrix separates implemented behavior from compatibility that still needs l
 | Local usage accounting | Implemented and live-tested on OpenCode 1.18.22 | Fixed aggregate DB query; 7/30/90-day and all-time windows; no prompt/content projection. |
 | Usage cost values | Provider-reported estimate | OpenCode's recorded cost is displayed; it is not treated as a provider invoice. |
 | Plugin-free fallback | Implemented, explicitly incomplete | Preserves a usable snapshot when plugin-aware discovery fails; plugin models may be absent. |
-| Dynamic model records | Implemented | New records are visible and Model Control-disabled by default. |
+| Dynamic model records | Implemented | New records are visible and Model Control-disabled by default. A compatible explicit role selection enables only that selected model; Automatic never enables models. Capability-derived roles are refreshed from current provider metadata, including empty capability sets, while bundled curated profiles are restored from the packaged catalog during legacy snapshot migration. |
 | Verified-free mode | Implemented | Only independently verified exact-zero pricing is eligible. |
-| Known-paid preference | Implemented | Paid mode allows verified free and known paid, preferring paid after hard gates. |
+| Known-paid preference | Implemented | Paid mode allows verified free and known paid from any provider, preferring paid after hard gates. Compatible disabled models can be explicitly selected and enabled one at a time; unknown pricing remains blocked. |
 | Unknown pricing | Blocked | Missing or ambiguous pricing is not assumed free and cannot auto-route. |
 | Big Pickle primary | Configured, unbenchmarked | Text-first initial assignment; quality claims require benchmark evidence. |
 | Attachment-aware media routing | Implemented; release acceptance pending | A media turn entering through `omc-router` selects the compatible saved vision model. Media-only analysis becomes a hard tool-free vision-worker turn; only explicit user-authored text classified as a code change retains Omc-Router. |

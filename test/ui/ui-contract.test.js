@@ -78,6 +78,9 @@ test("core interactions expose semantic labels and unsaved-state protection", as
   assert.match(roles, />Free<\/button>/);
   assert.match(roles, />Paid<\/button>/);
   assert.match(roles, /Provider charges may apply/);
+  assert.match(roles, /enable on selection/);
+  assert.match(roles, /selectRoleModel/);
+  assert.match(roles, /isRoleModelAssignable/);
   assert.match(roles, /Review repair passes/);
   assert.match(roles, /does not switch to another model/);
   assert.match(benchmarks, /Manual runtime access check/);

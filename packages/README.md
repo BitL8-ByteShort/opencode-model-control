@@ -4,6 +4,12 @@ This directory carries checksum-recorded copies of verified public release packa
 
 Each tarball is produced with `npm pack` only after the full release gate passes. Its filename, version, and SHA-256 digest are recorded here so users can verify a direct download before installation.
 
+## 0.2.1
+
+- File: `opencode-model-control-0.2.1.tgz`
+- SHA-256: `b0c0e161bec91ac384d12336d9786aa41870a65d3a291a72760a1e84fb3a489c`
+- Source tag: `v0.2.1`
+
 ## 0.2.0
 
 - File: `opencode-model-control-0.2.0.tgz`

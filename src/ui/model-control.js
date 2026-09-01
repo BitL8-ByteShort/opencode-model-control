@@ -70,6 +70,19 @@ export function modelInputModalities(model) {
   return [];
 }
 
+function modelOutputModalities(model) {
+  if (
+    model?.modalities &&
+    typeof model.modalities === "object" &&
+    !Array.isArray(model.modalities) &&
+    Array.isArray(model.modalities.output)
+  ) {
+    return model.modalities.output.map(String);
+  }
+  if (Array.isArray(model?.outputModalities)) return model.outputModalities.map(String);
+  return [];
+}
+
 export function modelRoles(model) {
   if (Array.isArray(model?.roles)) return model.roles.map(String);
   if (model?.roles && typeof model.roles === "object") {
@@ -308,11 +321,61 @@ export function catalogSummary(catalog, settings) {
 export function roleModelCompatible(model, role) {
   if (!modelRoles(model).includes(role)) return false;
   if (role === "orchestrator" && model?.canOrchestrate !== true) return false;
+  if (
+    (role === "orchestrator" || role === "code-worker" || role === "vision-worker") &&
+    model?.toolCall === false
+  ) {
+    return false;
+  }
+  if (role === "vision-worker" && model?.toolCall !== true) return false;
   const requiredAccess = role === "orchestrator" || role === "code-worker" ? "write" : "read";
   if (!modelAccess(model).includes(requiredAccess)) return false;
   const modalities = modelInputModalities(model).map((item) => item.toLowerCase());
   if (!modalities.includes("text")) return false;
-  return role !== "vision-worker" || modalities.includes("image");
+  if (role === "vision-worker" && !modalities.includes("image")) return false;
+  return modelOutputModalities(model).map((item) => item.toLowerCase()).includes("text");
+}
+
+export function isRoleModelAssignable(model, settings, role) {
+  const control = settings?.modelControls?.[model?.id];
+  return (
+    isModelCostAllowed(model, settings) &&
+    isModelAvailable(model) &&
+    control?.available === true &&
+    roleModelCompatible(model, role)
+  );
+}
+
+export function isRoleModelEligible(model, settings, role) {
+  return (
+    isRoleModelAssignable(model, settings, role) &&
+    settings?.modelControls?.[model?.id]?.enabled === true
+  );
+}
+
+export function selectRoleModel(settings, catalog, role, modelId) {
+  if (!ROLE_DEFINITIONS.some((definition) => definition.key === role)) return settings;
+  if (modelId === "auto") {
+    return {
+      ...settings,
+      roleAssignments: { ...settings.roleAssignments, [role]: "auto" },
+    };
+  }
+
+  const model = catalog.find((entry) => entry.id === modelId);
+  if (!model || !isRoleModelAssignable(model, settings, role)) return settings;
+
+  return {
+    ...settings,
+    modelControls: {
+      ...settings.modelControls,
+      [modelId]: {
+        ...settings.modelControls[modelId],
+        enabled: true,
+      },
+    },
+    roleAssignments: { ...settings.roleAssignments, [role]: modelId },
+  };
 }
 
 export function configText(response) {

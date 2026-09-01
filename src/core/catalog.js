@@ -301,7 +301,10 @@ export function classifyModelPricing(model) {
 }
 
 export function modelSupports({ model, role, modalities, access }) {
-  if (!MODEL_ROLES.includes(role) || model?.roles?.[role] === undefined) return false;
+  const roleScore = model?.roles?.[role];
+  if (!MODEL_ROLES.includes(role) || !Number.isInteger(roleScore) || roleScore <= 0) {
+    return false;
+  }
   if (role === "orchestrator" && model.canOrchestrate !== true) return false;
   if (
     (role === "orchestrator" || role === "code-worker" || role === "vision-worker") &&
