@@ -254,6 +254,7 @@ export class ControlService {
       let merged = mergeDiscoveredCatalog(
         this.hasLiveSnapshot ? previousCatalog : this.baseCatalog,
         result.models,
+        { curatedCatalog: this.baseCatalog },
       );
       if (result.complete === false && this.hasLiveSnapshot) {
         const discoveredIds = new Set(result.models.map((model) => model.id));

@@ -147,7 +147,7 @@ A model is:
 
 A model name ending in `-free` is not sufficient evidence by itself. OpenCode may normalize missing pricing fields to zero, so arbitrary CLI zero values remain unknown unless independently verified.
 
-Newly discovered models are visible and disabled by default. The user must explicitly allow Model Control to select them.
+Newly discovered models are visible and disabled by default. The user must explicitly allow Model Control to select them. They can do that in Models or by deliberately choosing an available, cost-allowed, role-compatible model in a role dropdown; that selection atomically enables only the chosen model in the draft. Automatic selection never enables a model, and Save remains the commit point.
 
 ## Advanced developer tools
 

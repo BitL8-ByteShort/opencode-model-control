@@ -231,22 +231,49 @@ export function toLiveAvailability(catalog, liveModels) {
 
 export function mergeDiscoveredCatalog(baseCatalog, liveModels, {
   snapshotDate = new Date().toISOString().slice(0, 10),
+  curatedCatalog,
 } = {}) {
   const previous = new Map(baseCatalog.models.map((model) => [model.id, model]));
+  const curatedById = new Map(
+    (curatedCatalog?.models ?? []).map((model) => [model.id, model]),
+  );
   const liveById = new Map(liveModels.map((model) => [model.id, model]));
   const ids = new Set([...previous.keys(), ...liveById.keys()]);
   const models = [...ids].map((id) => {
     const prior = previous.get(id);
+    const curated = curatedById.get(id);
     const live = liveById.get(id);
     if (!live) {
+      const capabilityDerived =
+        !curated &&
+        (prior?.profileSource === "capability" ||
+          (prior?.profileSource == null && prior?.discovered === true));
       return {
         ...prior,
+        ...(curated
+          ? {
+              label: curated.label,
+              status: curated.status,
+              provisional: curated.provisional,
+              access: curated.access,
+              canOrchestrate: curated.canOrchestrate,
+              roles: curated.roles,
+              profileSource: "curated",
+            }
+          : {}),
         available: false,
         discovered: false,
         runtimeVerified: false,
-        enabledByDefault: prior?.profileSource === "capability" ? false : prior.enabledByDefault,
+        enabledByDefault: curated?.enabledByDefault ??
+          (capabilityDerived ? false : prior.enabledByDefault),
       };
     }
+
+    const capabilityDerived =
+      !curated &&
+      (!prior ||
+        prior.profileSource === "capability" ||
+        (prior.profileSource == null && prior.discovered === true));
 
     const reportedInputCost = verifiedCost(
       live.inputCost ?? (live.free === true ? 0 : null),
@@ -261,35 +288,52 @@ export function mergeDiscoveredCatalog(baseCatalog, liveModels, {
       reportedOutputCost !== null;
     const liveHasPositivePrice =
       reportedPrices && (reportedInputCost > 0 || reportedOutputCost > 0);
+    const pricingEvidence = curated ?? prior;
     const priorVerifiedFree =
-      prior?.free?.verified === true &&
-      prior.free.inputUsdPerMillion === 0 &&
-      prior.free.outputUsdPerMillion === 0;
+      pricingEvidence?.free?.verified === true &&
+      pricingEvidence.free.inputUsdPerMillion === 0 &&
+      pricingEvidence.free.outputUsdPerMillion === 0;
     const verifiedPricing = liveHasPositivePrice || (priorVerifiedFree && reportedPrices);
-    const inputModalities = Array.isArray(live.inputModalities) && live.inputModalities.length > 0
+    const inputModalities = Array.isArray(live.inputModalities)
       ? live.inputModalities
-      : prior?.modalities?.input ?? [];
-    const outputModalities = Array.isArray(live.outputModalities) && live.outputModalities.length > 0
+      : capabilityDerived
+        ? []
+        : curated?.modalities?.input ?? prior?.modalities?.input ?? [];
+    const outputModalities = Array.isArray(live.outputModalities)
       ? live.outputModalities
-      : prior?.modalities?.output ?? [];
+      : capabilityDerived
+        ? []
+        : curated?.modalities?.output ?? prior?.modalities?.output ?? [];
     const capabilityProfile = capabilityRoleProfile({
       inputModalities,
       outputModalities,
       toolCall: live.toolCall,
     });
+    const curatedProfile = curated
+      ? {
+          access: curated.access.filter((mode) => capabilityProfile.access.includes(mode)),
+          canOrchestrate:
+            curated.canOrchestrate === true && capabilityProfile.canOrchestrate === true,
+          roles: Object.fromEntries(
+            Object.entries(curated.roles).filter(([role]) =>
+              Object.hasOwn(capabilityProfile.roles, role),
+            ),
+          ),
+        }
+      : null;
 
     return {
       ...(prior ?? {}),
       id,
-      label: prior?.label ?? live.name,
-      status: prior?.status ?? "provisional",
-      provisional: prior?.provisional ?? true,
-      enabledByDefault: prior?.enabledByDefault ?? false,
+      label: curated?.label ?? prior?.label ?? live.name,
+      status: curated?.status ?? prior?.status ?? "provisional",
+      provisional: curated?.provisional ?? prior?.provisional ?? true,
+      enabledByDefault: curated?.enabledByDefault ?? prior?.enabledByDefault ?? false,
       available: live.status === "active",
       discovered: true,
       runtimeVerified: false,
       provider: live.provider ?? id.split("/", 1)[0],
-      profileSource: prior?.profileSource ?? "capability",
+      profileSource: curated ? "curated" : prior?.profileSource ?? "capability",
       contextWindowTokens:
         Number.isInteger(live.context) && live.context > 0
           ? live.context
@@ -302,9 +346,14 @@ export function mergeDiscoveredCatalog(baseCatalog, liveModels, {
       },
       modalities: { input: inputModalities, output: outputModalities },
       toolCall: live.toolCall === true,
-      access: prior?.access ?? capabilityProfile.access,
-      canOrchestrate: prior?.canOrchestrate ?? capabilityProfile.canOrchestrate,
-      roles: prior?.roles ?? capabilityProfile.roles,
+      access: curatedProfile?.access ??
+        (capabilityDerived ? capabilityProfile.access : prior?.access ?? capabilityProfile.access),
+      canOrchestrate: curatedProfile?.canOrchestrate ??
+        (capabilityDerived
+          ? capabilityProfile.canOrchestrate
+          : prior?.canOrchestrate ?? capabilityProfile.canOrchestrate),
+      roles: curatedProfile?.roles ??
+        (capabilityDerived ? capabilityProfile.roles : prior?.roles ?? capabilityProfile.roles),
     };
   });
 

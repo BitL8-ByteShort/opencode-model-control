@@ -1,10 +1,10 @@
-import type { CatalogModel, RoleAssignments as RoleMap, RouterSettings } from "../types";
+import type { CatalogModel, RouterSettings } from "../types";
 import {
-  isModelCostAllowed,
-  isModelAvailable,
+  isRoleModelAssignable,
+  isRoleModelEligible,
   modelDisplayName,
   ROLE_DEFINITIONS,
-  roleModelCompatible,
+  selectRoleModel,
   setCostMode,
 } from "../model-control.js";
 import { Icon, Panel } from "./Primitives";
@@ -12,7 +12,7 @@ import { Icon, Panel } from "./Primitives";
 function selectHint(role: string) {
   if (role === "vision-worker") return "Only image-input models are eligible.";
   if (role === "orchestrator") return "Only models reporting orchestration support are eligible.";
-  return "Choose from enabled, available models allowed by the cost policy.";
+  return "Choose any compatible, available model allowed by the cost policy.";
 }
 
 export function RoleAssignments({
@@ -27,8 +27,7 @@ export function RoleAssignments({
   const enabledModels = catalog.filter((model) => settings.modelControls[model.id]?.enabled);
 
   const updateRole = (role: string, modelId: string) => {
-    const roleAssignments: RoleMap = { ...settings.roleAssignments, [role]: modelId };
-    onChange({ ...settings, roleAssignments });
+    onChange(selectRoleModel(settings, catalog, role, modelId) as RouterSettings);
   };
 
   return (
@@ -76,17 +75,18 @@ export function RoleAssignments({
               >
                 <option value="auto">Automatic</option>
                 {catalog.map((model) => {
-                  const eligible =
-                    isModelCostAllowed(model, settings) &&
-                    isModelAvailable(model) &&
-                    settings.modelControls[model.id]?.enabled &&
-                    roleModelCompatible(model, role.key);
-                  const selected = settings.roleAssignments[role.key] === model.id;
-                  return <option disabled={!eligible && !selected} key={model.id} value={model.id}>{modelDisplayName(model)}{eligible ? "" : " — not eligible"}</option>;
+                  const assignable = isRoleModelAssignable(model, settings, role.key);
+                  const eligible = isRoleModelEligible(model, settings, role.key);
+                  const suffix = !assignable
+                    ? " — not eligible"
+                    : eligible
+                      ? ""
+                      : " — enable on selection";
+                  return <option disabled={!assignable} key={model.id} value={model.id}>{modelDisplayName(model)}{suffix}</option>;
                 })}
               </select>
             </span>
-            <small className="field__hint" id={`${role.key}-hint`}>{selectHint(role.key)}</small>
+            <small className="field__hint" id={`${role.key}-hint`}>{selectHint(role.key)} Selecting a disabled model explicitly enables it for routing.</small>
           </label>
         ))}
       </div>
@@ -114,7 +114,7 @@ export function RoleAssignments({
         </label>
       </div>
       <div className={settings.costPolicy === "known-cost" ? "locked-setting locked-setting--warning" : "locked-setting"}><Icon name="lock" size={16} /><span><strong>{settings.costPolicy === "known-cost" ? "Known paid models allowed" : "Verified-free policy active"}</strong><small>Unknown or unverified pricing is always excluded from automatic routing.</small></span></div>
-      {enabledModels.length === 0 ? <p className="inline-alert inline-alert--warning">Enable at least one available model before saving a role assignment.</p> : null}
+      {enabledModels.length === 0 ? <p className="inline-alert inline-alert--warning">No models are enabled yet. Select a compatible model above or enable one in Models.</p> : null}
     </Panel>
   );
 }

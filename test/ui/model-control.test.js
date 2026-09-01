@@ -6,6 +6,8 @@ import {
   catalogSummary,
   evidenceMeta,
   isModelFree,
+  isRoleModelAssignable,
+  isRoleModelEligible,
   modelCostClass,
   modelAccess,
   modelInputModalities,
@@ -16,6 +18,7 @@ import {
   settingsEqual,
   settingsForApi,
   setCostMode,
+  selectRoleModel,
   toggleEnabledModel,
 } from "../../src/ui/model-control.js";
 
@@ -50,6 +53,7 @@ const catalog = liveIds.map((id) => ({
     output: ["text"],
   },
   access: id === "opencode/nemotron-3-ultra-free" ? ["read"] : ["read", "write"],
+  toolCall: id === "opencode/mimo-v2.5-free" ? true : undefined,
   canOrchestrate: id === "opencode/big-pickle",
   roles:
     id === "opencode/big-pickle"
@@ -193,6 +197,74 @@ test("Free and Paid modes map to explicit cost policy and disable paid routes sa
   assert.equal(free.costPolicy, "free-only");
   assert.equal(free.modelControls[paidModel.id].enabled, false);
   assert.equal(free.roleAssignments["code-worker"], "auto");
+});
+
+test("explicit role selection opts a compatible known-paid provider model into routing", () => {
+  const grok = {
+    ...catalog[1],
+    id: "xai/grok-4.6",
+    label: "Grok 4.6",
+    enabledByDefault: false,
+    free: { verified: true, inputUsdPerMillion: 2, outputUsdPerMillion: 6 },
+    toolCall: true,
+    modalities: { input: ["text", "image", "pdf"], output: ["text"] },
+    access: ["read", "write"],
+    canOrchestrate: true,
+    roles: {
+      orchestrator: 25,
+      "code-worker": 25,
+      "vision-worker": 25,
+      reviewer: 25,
+    },
+  };
+  const allModels = [...catalog, grok];
+  const normalized = normalizeState({ catalog: allModels, settings: {} });
+  const paid = setCostMode(normalized.settings, allModels, "paid");
+
+  assert.equal(paid.modelControls[grok.id].enabled, false);
+  assert.equal(isRoleModelAssignable(grok, paid, "code-worker"), true);
+  assert.equal(isRoleModelEligible(grok, paid, "code-worker"), false);
+
+  const selected = selectRoleModel(paid, allModels, "code-worker", grok.id);
+  assert.equal(selected.roleAssignments["code-worker"], grok.id);
+  assert.equal(selected.modelControls[grok.id].enabled, true);
+  assert.equal(isRoleModelEligible(grok, selected, "code-worker"), true);
+});
+
+test("role selection keeps cost, availability, capability, and automatic opt-in gates closed", () => {
+  const paid = {
+    ...catalog[1],
+    id: "provider/paid-code",
+    enabledByDefault: false,
+    free: { verified: true, inputUsdPerMillion: 1, outputUsdPerMillion: 4 },
+    toolCall: true,
+    modalities: { input: ["text"], output: ["text"] },
+    access: ["read", "write"],
+    roles: { "code-worker": 25, reviewer: 25 },
+  };
+  const unknown = {
+    ...paid,
+    id: "provider/unknown-code",
+    free: { verified: false, inputUsdPerMillion: null, outputUsdPerMillion: null },
+  };
+  const unavailable = { ...paid, id: "provider/unavailable-code", available: false };
+  const incompatible = {
+    ...paid,
+    id: "provider/text-generator",
+    modalities: { input: ["text"], output: ["image"] },
+  };
+  const allModels = [...catalog, paid, unknown, unavailable, incompatible];
+  const freeSettings = normalizeState({ catalog: allModels, settings: {} }).settings;
+  const paidSettings = setCostMode(freeSettings, allModels, "paid");
+
+  assert.equal(isRoleModelAssignable(paid, freeSettings, "code-worker"), false);
+  assert.equal(isRoleModelAssignable(unknown, paidSettings, "code-worker"), false);
+  assert.equal(isRoleModelAssignable(unavailable, paidSettings, "code-worker"), false);
+  assert.equal(isRoleModelAssignable(incompatible, paidSettings, "code-worker"), false);
+
+  const automatic = selectRoleModel(paidSettings, allModels, "code-worker", "auto");
+  assert.equal(automatic.roleAssignments["code-worker"], "auto");
+  assert.equal(automatic.modelControls[paid.id].enabled, false);
 });
 
 test("catalog refresh notices require an OpenCode restart when the connection changed", () => {

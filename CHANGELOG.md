@@ -2,6 +2,14 @@
 
 All notable changes to OpenCode Model Control are recorded here. The project follows [Semantic Versioning](https://semver.org/).
 
+## 0.2.1 - 2026-09-01
+
+- Made any available, capability-compatible known-paid model selectable in a role dropdown while Paid mode is active, regardless of provider. Selecting a disabled model is now the explicit opt-in that enables only that model for routing; Automatic never enables models by itself.
+- Aligned role-dropdown checks with the core routing gates for saved availability, text output, tool-call capability, access, and modality. Unknown-cost, unavailable, and incompatible models remain blocked.
+- Recompute capability-derived role profiles on catalog refresh, including empty capability arrays, so provider upgrades and downgrades cannot leave dynamic models with stale roles. Restore bundled curated profiles from the packaged catalog when migrating legacy snapshots that mislabeled them as capability-derived.
+- Treat zero role scores as incompatible consistently across draft validation, routing, and generated OpenCode configuration.
+- Added provider-agnostic regression coverage using an xAI/Grok-shaped paid model plus blocked cost, availability, capability, and automatic-selection cases.
+
 ## 0.2.0 - 2026-08-31
 
 - Added attachment-aware Omc-Router media switching through the bundled local OpenCode plugin, with capability, modality, availability, enablement, and cost-policy gates that fail closed. Media-only analysis runs as a tool-free vision worker, while only explicit user-authored text classified as a code change may retain Omc-Router for the vision-to-code-to-review workflow.

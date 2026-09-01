@@ -298,3 +298,61 @@ test("unknown pricing and missing tool calls fail eligibility closed", () => {
     false,
   );
 });
+
+test("known-paid role eligibility is provider-agnostic and still requires explicit enablement", () => {
+  const providerIds = [
+    "xai/grok-example",
+    "openrouter/vendor-example",
+    "custom/private-example",
+  ];
+  const paidModels = providerIds.map((id) => derivedModel(id, {
+    label: id,
+    enabledByDefault: false,
+    free: {
+      verified: true,
+      inputUsdPerMillion: 1,
+      outputUsdPerMillion: 4,
+      verifiedAt: "2026-09-01",
+    },
+    modalities: { input: ["text", "image"], output: ["text"] },
+    toolCall: true,
+    access: ["read", "write"],
+    canOrchestrate: true,
+    roles: {
+      orchestrator: 25,
+      "code-worker": 25,
+      "vision-worker": 25,
+      reviewer: 25,
+    },
+  }));
+  const catalog = validateCatalog({
+    ...loadModelCatalog(),
+    models: [...loadModelCatalog().models, ...paidModels],
+  });
+  const settings = createDefaultSettings(catalog);
+  settings.costPolicy = "known-cost";
+  settings.costPreference = "paid-first";
+
+  const codeBeforeOptIn = eligibleModelsForRole({
+    catalog,
+    settings,
+    role: "code-worker",
+    modalities: ["text"],
+    access: "write",
+  });
+  assert.ok(providerIds.every((id) => !codeBeforeOptIn.some((model) => model.id === id)));
+
+  for (const id of providerIds) settings.modelControls[id].enabled = true;
+  for (const [role, modalities, access] of [
+    ["orchestrator", ["text"], "write"],
+    ["code-worker", ["text"], "write"],
+    ["vision-worker", ["text", "image"], "read"],
+    ["reviewer", ["text"], "read"],
+  ]) {
+    const eligible = eligibleModelsForRole({ catalog, settings, role, modalities, access });
+    assert.deepEqual(
+      eligible.filter((model) => providerIds.includes(model.id)).map((model) => model.id),
+      [...providerIds].sort(),
+    );
+  }
+});
