@@ -56,7 +56,10 @@
     "start": "node bin/opencode-model-control.js",
     "test": "node --test",
     "verify": "npm run check && npm test && npm run build",
-    "test:browser": "node --import ./scripts/browser/environment.mjs ./node_modules/@playwright/test/cli.js test --config scripts/browser/playwright.config.mjs"
+    "test:browser": "node --import ./scripts/browser/environment.mjs ./node_modules/@playwright/test/cli.js test --config scripts/browser/playwright.config.mjs",
+    "test:host": "node scripts/host-acceptance.mjs",
+    "test:package": "node scripts/package-acceptance.mjs",
+    "test:metadata": "node scripts/metadata-smoke.mjs"
   },
   "devDependencies": {
     "@modelcontextprotocol/client": "2.0.0",

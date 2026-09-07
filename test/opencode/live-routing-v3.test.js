@@ -97,7 +97,7 @@ function fixture() {
     mutate(input, params);
     return hooks["chat.params"](input, params);
   };
-  return { catalog, settings, host, hooks, turn, dispatch };
+  return { catalog, settings, host, hooks, turn, dispatch, client };
 }
 
 test("all four owned roles apply live saved selection and clear inherited variants", async () => {
@@ -606,4 +606,110 @@ test("an unrelated next child message consumes no pending repair authorization",
   const ordinary = await f.turn();
   assert.equal(ordinary.message.model.modelID, "nemotron-3.5-lightning-free");
   await f.dispatch(ordinary);
+});
+
+test("missing host pin emits bounded reload guidance and notification failure cannot permit dispatch", async () => {
+  const f = fixture();
+  f.settings.roleAssignments["code-worker"] = A;
+  f.host.splice(
+    f.host.findIndex((m) => m.id === A.split("/")[1]),
+    1,
+  );
+  const notifications = [];
+  f.client.tui = {
+    showToast: async (args) => {
+      notifications.push(args);
+    },
+  };
+  await assert.rejects(f.turn(), (e) => e.code === "OMC_HOST_MODEL_MISSING");
+  assert.deepEqual(notifications, [
+    {
+      query: { directory: "/isolated" },
+      body: {
+        title: "OpenCode Model Control",
+        message:
+          "OMC_HOST_MODEL_MISSING: The saved model is absent from this running OpenCode instance. Reload OpenCode and retry.",
+        variant: "error",
+        duration: 10000,
+      },
+    },
+  ]);
+  f.client.tui.showToast = async () => {
+    throw new Error("secret notification transport");
+  };
+  await assert.rejects(
+    f.turn(),
+    (e) => e.code === "OMC_HOST_MODEL_MISSING" && !e.message.includes("secret"),
+  );
+});
+
+test("only the completed owned slash invocation authorizes its verified synthetic summary", async () => {
+  for (const condition of [
+    "valid",
+    "unsynthetic",
+    "wrong-command",
+    "new-user",
+    "changed-pin",
+    "wrong-session",
+    "lookup-failed",
+  ]) {
+    const f = fixture();
+    const parent = await f.turn("omc-router", "parent", [
+      { type: "subtask", agent: "omc-code-worker", command: "fixture-worker" },
+    ]);
+    const args = {
+      subagent_type: "omc-code-worker",
+      command:
+        condition === "wrong-command" ? "other-command" : "fixture-worker",
+    };
+    await f.hooks["tool.execute.before"](
+      { tool: "task", sessionID: "parent", callID: "slash-call" },
+      { args },
+    );
+    await f.turn();
+    await f.hooks["tool.execute.after"](
+      { tool: "task", sessionID: "parent", callID: "slash-call", args },
+      { metadata: { sessionId: "child" } },
+    );
+    const summary = structuredClone(parent);
+    summary.message.id = "host-summary";
+    f.client.session = {
+      message: async (request) => {
+        assert.deepEqual(request, {
+          path: { id: "parent", messageID: "host-summary" },
+          query: { directory: "/isolated" },
+          throwOnError: true,
+        });
+        if (condition === "lookup-failed")
+          throw new Error("private transport detail");
+        return {
+          data: {
+            info: {
+              ...summary.message,
+              role: "user",
+              sessionID: condition === "wrong-session" ? "other" : "parent",
+            },
+            parts: [
+              {
+                type: "text",
+                synthetic: condition !== "unsynthetic",
+                text: "Summarize the task tool output above and continue with your task.",
+              },
+            ],
+          },
+        };
+      },
+    };
+    if (condition === "new-user") await f.turn("omc-router", "parent");
+    if (condition === "changed-pin")
+      f.settings.roleAssignments.orchestrator = B;
+    if (condition === "valid") {
+      await f.dispatch(summary, "parent");
+      await f.dispatch(summary, "parent");
+      summary.message.id = "another-summary";
+    }
+    await assert.rejects(f.dispatch(summary, "parent"), (e) =>
+      /^OMC_/.test(e.code),
+    );
+  }
 });

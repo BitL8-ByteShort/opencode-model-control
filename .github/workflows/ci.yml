@@ -4,33 +4,109 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+    inputs:
+      artifact-stage:
+        description: Candidate, or final exact tarball for controller publication after every gate passes
+        type: choice
+        options: [candidate, final]
+        default: candidate
 
 permissions:
   contents: read
 
 jobs:
+  # Preserve these exact required contexts: verify (22.12.0), verify (24.x).
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     strategy:
       matrix:
         node-version: [22.12.0, 24.x]
-
     steps:
-      - name: Check out source
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Set up Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: ${{ matrix.node-version }}
           cache: npm
+      - run: npm ci
+      - name: Install the exact config-smoke host (no acceptance skips)
+        run: |
+          npm install --prefix "$RUNNER_TEMP/verify-host" --no-audit --no-fund opencode-ai@1.18.22
+          echo "$RUNNER_TEMP/verify-host/node_modules/.bin" >> "$GITHUB_PATH"
+      - run: npm run verify
+      - run: npm audit --audit-level=high
+      - run: npm exec playwright install --with-deps chromium
+      - run: npm run test:browser
 
-      - name: Install locked dependencies
-        run: npm ci
+  pack:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22.12.0
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      # Source verification has already passed; never repack in consumers.
+      - name: Pack one immutable tarball with checksum and source evidence
+        env:
+          OMC_ARTIFACT_STAGE: ${{ inputs.artifact-stage || 'candidate' }}
+        run: node scripts/pack-artifact.mjs artifact
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: omc-${{ inputs.artifact-stage || 'candidate' }}-tarball
+          path: artifact/
+          if-no-files-found: error
+          retention-days: 30
 
-      - name: Verify source, tests, and production build
-        run: npm run verify
-
-      - name: Audit dependencies
-        run: npm audit --audit-level=high
+  acceptance:
+    needs: pack
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        node-version: [22.12.0, 24.x]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+      - run: npm ci
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: omc-${{ inputs.artifact-stage || 'candidate' }}-tarball
+          path: artifact
+      - name: Verify inner tarball digest
+        run: node scripts/check-artifact.mjs artifact
+      - name: Install exact OpenCode versions in isolated prefixes
+        run: |
+          npm install --prefix "$RUNNER_TEMP/host122" --no-audit --no-fund opencode-ai@1.18.22
+          npm install --prefix "$RUNNER_TEMP/host128" --no-audit --no-fund opencode-ai@1.18.28
+          mkdir evidence
+      - name: Actual OpenCode dispatch, synthetic loopback inference
+        run: |
+          OMC_HOST_BINARY="$RUNNER_TEMP/host122/node_modules/.bin/opencode" OMC_EVIDENCE_PATH=evidence/host-1.18.22.json npm run test:host
+          OMC_HOST_BINARY="$RUNNER_TEMP/host128/node_modules/.bin/opencode" OMC_EVIDENCE_PATH=evidence/host-1.18.28.json npm run test:host
+      - name: Exact tarball install, upgrade, restart, panel and MCP acceptance
+        run: OMC_HOST_BINARY="$RUNNER_TEMP/host128/node_modules/.bin/opencode" OMC_EVIDENCE_PATH=evidence/package.json npm run test:package -- artifact/*.tgz
+      - name: Browser interaction acceptance on macOS
+        if: runner.os == 'macOS'
+        run: |
+          npm exec playwright install chromium
+          npm run test:browser
+      - name: Live public metadata smoke, no inference
+        run: OMC_EVIDENCE_PATH=evidence/live-public-metadata.json npm run test:metadata
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: acceptance-${{ matrix.os }}-${{ matrix.node-version }}
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 30

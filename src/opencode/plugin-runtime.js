@@ -495,6 +495,19 @@ export function createMediaRoutingHooks({
           requirements,
           agent: output.message.agent,
           messageID: output.message.id,
+          slash:
+            agent === "omc-router" &&
+            output.parts.length === 1 &&
+            output.parts[0].type === "subtask" &&
+            OWNED_ROLES[output.parts[0].agent] &&
+            output.parts[0].agent !== "omc-router" &&
+            typeof output.parts[0].command === "string"
+              ? {
+                  agent: output.parts[0].agent,
+                  command: output.parts[0].command,
+                  completed: false,
+                }
+              : null,
         });
         // Each user turn starts a distinct owned workflow. Ordinary resumed
         // children have no retained assignment unless a completed owned review
@@ -514,12 +527,71 @@ export function createMediaRoutingHooks({
           });
         }
       } catch (error) {
-        throw asMediaRoutingError(error);
+        const failure = asMediaRoutingError(error);
+        // OpenCode sanitizes hook errors in HTTP responses. Publish bounded
+        // guidance to its instance event stream without weakening fail-closed
+        // dispatch when a headless host has no toast consumer or transport.
+        if (failure.code === "OMC_HOST_MODEL_MISSING") {
+          try {
+            await client?.tui?.showToast({
+              query: { directory },
+              body: {
+                title: "OpenCode Model Control",
+                message:
+                  "OMC_HOST_MODEL_MISSING: The saved model is absent from this running OpenCode instance. Reload OpenCode and retry.",
+                variant: "error",
+                duration: 10000,
+              },
+            });
+          } catch {
+            /* Notification failure must never authorize inference. */
+          }
+        }
+        throw failure;
       }
     },
     async "chat.params"(input, output) {
       if (!OWNED_ROLES[input?.agent]) return;
       const route = routes.get(input.sessionID);
+      if (route?.messageID !== input.message?.id) {
+        const slash = route?.slash;
+        if (route) route.slash = null;
+        // OpenCode 1.18.x appends one slash-command summary message directly,
+        // without chat.message. Accept only that host-created synthetic message
+        // after this exact owned command completed; every normal guard below
+        // still applies, including a saved pin changed while the child ran.
+        if (
+          route?.agent === "omc-router" &&
+          input.agent === route.agent &&
+          slash?.completed
+        ) {
+          try {
+            const { data } = await client.session.message({
+              path: { id: input.sessionID, messageID: input.message.id },
+              query: { directory },
+              throwOnError: true,
+            });
+            if (
+              routes.get(input.sessionID) === route &&
+              data?.info?.id === input.message.id &&
+              data.info.sessionID === input.sessionID &&
+              data.info.role === "user" &&
+              data.info.agent === route.agent &&
+              `${data.info.model?.providerID}/${data.info.model?.modelID}` ===
+                route.id &&
+              data.parts?.length === 1 &&
+              data.parts[0].type === "text" &&
+              data.parts[0].synthetic === true &&
+              data.parts[0].text ===
+                "Summarize the task tool output above and continue with your task."
+            ) {
+              route.messageID = input.message.id;
+            }
+          } catch {
+            /* Missing or unverifiable host evidence stays blocked. */
+          }
+        }
+      }
       if (
         !route ||
         route.agent !== input.agent ||
@@ -614,6 +686,13 @@ export function createMediaRoutingHooks({
         reviewTarget:
           args.subagent_type === "omc-reviewer" ? workflow.worker : null,
         repair: null,
+        slash:
+          route.slash &&
+          !route.slash.completed &&
+          route.slash.command === args.command &&
+          route.slash.agent === args.subagent_type
+            ? route.slash
+            : null,
       };
       if (args.subagent_type === "omc-code-worker" && args.task_id) {
         const child = children.get(args.task_id);
@@ -662,6 +741,12 @@ export function createMediaRoutingHooks({
         return;
       }
       completeChild(operation, childID);
+      if (
+        operation.slash &&
+        routes.get(input.sessionID)?.slash === operation.slash &&
+        routes.get(childID)?.agent === operation.agent
+      )
+        operation.slash.completed = true;
     },
   };
 }
