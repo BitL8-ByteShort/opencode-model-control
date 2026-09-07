@@ -260,23 +260,33 @@ export class ControlService {
         freeOnly: this.settings.costPolicy === "free-only",
         costPreference: this.settings.costPreference,
         costPolicy: this.settings.costPolicy,
-        openCode: this.openCode,
+        openCode: {
+          ...this.openCode,
+          diagnosticsSource: "process-local-discovery",
+        },
         catalog: {
           revision: this.catalog.revision,
           ...this.refreshState,
-          source:
-            this.openCode.complete === false
-              ? "OpenCode CLI (plugin-free fallback)"
-              : "OpenCode CLI",
+          source: "OpenCode CLI + Models.dev",
           snapshotDate: this.catalog.snapshotDate,
-          lastRefreshed: this.openCode.checkedAt,
+          lastRefreshed: this.refreshState?.succeededAt ?? null,
           stale:
-            !this.refreshState?.attemptedAt ||
-            this.now() - Date.parse(this.refreshState.attemptedAt) >=
+            !this.refreshState?.succeededAt ||
+            this.now() - Date.parse(this.refreshState.succeededAt) >=
               CATALOG_REFRESH_MS ||
             this.refreshState.status !== "success",
-          complete: this.openCode.complete === true,
-          warning: this.openCode.error?.message ?? null,
+          complete: this.refreshState?.complete === true,
+          warning:
+            [
+              this.refreshState?.complete !== true
+                ? "OpenCode discovery was incomplete; prior model availability was retained."
+                : null,
+              this.refreshState?.pricingError
+                ? "Public pricing could not be refreshed; the last successful pricing snapshot was retained."
+                : null,
+            ]
+              .filter(Boolean)
+              .join(" ") || null,
         },
       },
       catalog: publicCatalog(this.catalog, this.settings),
@@ -371,6 +381,10 @@ export class ControlService {
         const complete = discovered.complete === true;
         this.refreshState = {
           attemptedAt,
+          succeededAt:
+            complete && !metadata.error
+              ? new Date(this.now()).toISOString()
+              : (this.refreshState?.succeededAt ?? null),
           discoverySucceededAt: complete
             ? attemptedAt
             : (this.refreshState?.discoverySucceededAt ?? null),
@@ -418,8 +432,6 @@ export class ControlService {
         ...this.openCode,
         installed: snapshot.refresh.installed,
         version: snapshot.refresh.version,
-        complete: snapshot.refresh.complete,
-        checkedAt: snapshot.refresh.attemptedAt,
       };
     return this.getState();
   }

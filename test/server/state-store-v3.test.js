@@ -174,3 +174,85 @@ test("snapshot loader distinguishes absent intent/catalog from defaults and reje
     (e) => e.code === "SETTINGS_INVALID_JSON",
   );
 });
+
+test("stale truncated or malformed ownership records are recoverable for settings locks and refresh leases", async (t) => {
+  const { mkdir, writeFile, utimes } = await import("node:fs/promises");
+  const { acquireFileLock } = await import("../../src/server/state-lock.js");
+  const directory = await mkdtemp(join(tmpdir(), "omc-owner-truncated-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  for (const [index, body] of [
+    "",
+    '{"pid":',
+    "{}",
+    "null",
+    '{"pid":99999999999,"token":"bad"}',
+  ].entries()) {
+    for (const suffix of ["lock", "refresh-lease"]) {
+      const path = join(directory, `${index}.${suffix}`);
+      await mkdir(path);
+      await writeFile(join(path, "owner.json"), body);
+      const old = new Date(Date.now() - 11000);
+      await utimes(path, old, old);
+      const release = await acquireFileLock(path, { waitMs: 70 });
+      assert.equal(typeof release, "function", `${suffix}: ${body}`);
+      await release();
+    }
+  }
+});
+
+test("owner publication hides partial bytes and keeps a complete live owner exclusive", async (t) => {
+  const fs = await import("node:fs/promises");
+  const { acquireFileLock } = await import("../../src/server/state-lock.js");
+  const directory = await mkdtemp(join(tmpdir(), "omc-owner-publish-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const path = join(directory, "settings.lock");
+  let start, finish;
+  const began = new Promise((resolve) => {
+    start = resolve;
+  });
+  const gate = new Promise((resolve) => {
+    finish = resolve;
+  });
+  const pending = acquireFileLock(path, {
+    fs: {
+      ...fs,
+      writeFile: async (file, payload, options) => {
+        await fs.writeFile(file, "{", options);
+        start();
+        await gate;
+        await fs.writeFile(file, payload, { mode: 0o600 });
+      },
+    },
+  });
+  const first = await Promise.race([
+    began.then(() => "writing"),
+    pending.then(() => "published"),
+  ]);
+  if (first === "published") {
+    await (
+      await pending
+    )();
+    assert.fail(
+      "Lock was published without exercising the filesystem write boundary.",
+    );
+  }
+  let exposed;
+  try {
+    exposed = await readFile(join(path, "owner.json"), "utf8");
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+  const oldPending = new Date(Date.now() - 11000);
+  await fs.utimes(path, oldPending, oldPending);
+  const contended = await acquireFileLock(path, { waitMs: 40 });
+  finish();
+  const release = await pending;
+  assert.equal(exposed, undefined);
+  assert.equal(contended, null);
+  const owner = JSON.parse(await readFile(join(path, "owner.json"), "utf8"));
+  assert.equal(owner.pid, process.pid);
+  const old = new Date(Date.now() - 11000);
+  await fs.utimes(path, old, old);
+  assert.equal(await acquireFileLock(path, { waitMs: 40 }), null);
+  await release();
+});

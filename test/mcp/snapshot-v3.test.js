@@ -70,6 +70,45 @@ test("an already connected MCP reloads panel discoveries and policy revisions be
   );
   assert.ok(payload.blockedRoles.orchestrator.length);
   assert.equal(payload.policy.maxFallbacksPerAssignment, 1);
+  assert.equal(
+    payload.catalog.attemptedAt,
+    panel.getState().system.catalog.attemptedAt,
+  );
+  assert.equal(
+    payload.catalog.discoverySucceededAt,
+    panel.getState().system.catalog.discoverySucceededAt,
+  );
+  assert.equal(
+    payload.catalog.pricingSucceededAt,
+    panel.getState().system.catalog.pricingSucceededAt,
+  );
+  assert.equal(
+    payload.catalog.succeededAt,
+    panel.getState().system.catalog.succeededAt,
+  );
+  assert.equal(payload.catalog.status, "success");
+  assert.equal(payload.openCode.checkedAtSource, "process-local-discovery");
+  const successful = payload.catalog;
+  panel.now = () => Date.now() + 30000;
+  panel.discovery = async () => ({
+    installed: true,
+    models: [],
+    complete: false,
+    error: { code: "FAIL", message: "failed" },
+  });
+  panel.metadataFetch = async () => new Response("{}", { status: 503 });
+  await panel.refreshCatalog();
+  const failed = (
+    await client.callTool({ name: "get_model_status", arguments: {} })
+  ).structuredContent;
+  assert.equal(failed.catalog.status, "failure");
+  assert.notEqual(failed.catalog.attemptedAt, successful.attemptedAt);
+  for (const field of [
+    "succeededAt",
+    "discoverySucceededAt",
+    "pricingSucceededAt",
+  ])
+    assert.equal(failed.catalog[field], successful[field]);
 });
 
 test("MCP routing decisions include the exact snapshot revisions and bounded workflow policy", async (t) => {

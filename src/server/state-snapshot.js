@@ -27,6 +27,7 @@ export async function readRefreshStatus(settingsPath) {
     const value = JSON.parse(body);
     return {
       attemptedAt: date(value.attemptedAt),
+      succeededAt: date(value.succeededAt),
       discoverySucceededAt: date(value.discoverySucceededAt),
       pricingSucceededAt: date(value.pricingSucceededAt),
       complete: value.complete === true,

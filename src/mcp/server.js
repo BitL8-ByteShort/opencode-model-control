@@ -80,9 +80,26 @@ function compactStatus(state) {
       recursiveDelegation: false,
     },
     openCode: {
-      installed: state.system?.openCode?.installed ?? false,
-      version: state.system?.openCode?.version ?? null,
+      installed:
+        state.system?.catalog?.installed ??
+        state.system?.openCode?.installed ??
+        false,
+      version:
+        state.system?.catalog?.version ??
+        state.system?.openCode?.version ??
+        null,
       checkedAt: state.system?.openCode?.checkedAt ?? null,
+      checkedAtSource: "process-local-discovery",
+    },
+    catalog: {
+      attemptedAt: state.system?.catalog?.attemptedAt ?? null,
+      succeededAt: state.system?.catalog?.succeededAt ?? null,
+      discoverySucceededAt: state.system?.catalog?.discoverySucceededAt ?? null,
+      pricingSucceededAt: state.system?.catalog?.pricingSucceededAt ?? null,
+      status: state.system?.catalog?.status ?? null,
+      complete: state.system?.catalog?.complete === true,
+      stale: state.system?.catalog?.stale !== false,
+      warning: state.system?.catalog?.warning ?? null,
     },
     roleAssignments: state.settings.roleAssignments,
     models: state.catalog.map((model) => ({

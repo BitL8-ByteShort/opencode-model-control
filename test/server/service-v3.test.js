@@ -288,3 +288,64 @@ test("every concurrent close waits for active metadata work and lease release", 
     (e) => e.code === "ENOENT",
   );
 });
+
+test("shared refresh reload never relabels old local diagnostics or warnings as a new successful discovery", async (t) => {
+  const { service, settingsPath } = await setup(t);
+  const localTime = service.getState().system.openCode.checkedAt;
+  service.openCode = {
+    ...service.openCode,
+    availableIds: ["new/old"],
+    models: [liveModel("new/old")],
+    error: { code: "OLD_FAILURE", message: "old local failure" },
+  };
+  const other = await new ControlService({
+    settingsPath,
+    discovery: discovery([liveModel("new/current")]),
+    metadataFetch: async () =>
+      new Response(JSON.stringify(publicFixture([{ id: "new/current" }]))),
+  }).initialize();
+  t.after(() => other.close());
+  await other.refreshCatalog();
+  await service.reloadSettings();
+  const state = service.getState();
+  assert.equal(state.system.openCode.checkedAt, localTime);
+  assert.equal(
+    state.system.openCode.diagnosticsSource,
+    "process-local-discovery",
+  );
+  assert.deepEqual(state.system.openCode.availableIds, ["new/old"]);
+  assert.equal(state.system.catalog.warning, null);
+  assert.equal(state.system.catalog.status, "success");
+  assert.equal(state.system.catalog.complete, true);
+  assert.equal(
+    state.system.catalog.lastRefreshed,
+    state.system.catalog.succeededAt,
+  );
+  assert.equal(
+    state.catalog.find((m) => m.id === "new/current").available,
+    true,
+  );
+});
+
+test("failed attempts preserve last successful refresh and both source success timestamps", async (t) => {
+  const { service } = await setup(t);
+  const before = service.getState().system.catalog;
+  service.now = () => Date.now() + 30000;
+  service.discovery = async () => ({
+    installed: true,
+    models: [],
+    complete: false,
+    error: { code: "FAIL", message: "discovery failed" },
+  });
+  service.metadataFetch = async () => new Response("{}", { status: 503 });
+  await service.refreshCatalog();
+  const after = service.getState().system.catalog;
+  assert.notEqual(after.attemptedAt, before.attemptedAt);
+  assert.equal(after.lastRefreshed, before.lastRefreshed);
+  assert.equal(after.succeededAt, before.succeededAt);
+  assert.equal(after.discoverySucceededAt, before.discoverySucceededAt);
+  assert.equal(after.pricingSucceededAt, before.pricingSucceededAt);
+  assert.equal(after.status, "failure");
+  assert.equal(after.stale, true);
+  assert.match(after.warning, /pricing/i);
+});
