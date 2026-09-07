@@ -280,7 +280,7 @@
               "anyOf": [
                 {
                   "type": "string",
-                  "pattern": "^[a-z0-9@~][a-z0-9._:+/@~-]*$"
+                  "pattern": "^[a-zA-Z0-9@~][a-zA-Z0-9._:+/@~-]*$"
                 },
                 {
                   "type": "null"
@@ -291,7 +291,7 @@
               "anyOf": [
                 {
                   "type": "string",
-                  "pattern": "^[@a-z0-9][@a-z0-9/._-]*$"
+                  "pattern": "^[@a-zA-Z0-9][@a-zA-Z0-9/._-]*$"
                 },
                 {
                   "type": "null"
@@ -308,12 +308,17 @@
                   "type": "null"
                 }
               ]
+            },
+            "urlValid": {
+              "default": true,
+              "type": "boolean"
             }
           },
           "required": [
             "id",
             "npm",
-            "url"
+            "url",
+            "urlValid"
           ],
           "additionalProperties": false
         },
@@ -346,7 +351,7 @@
               "type": "object",
               "propertyNames": {
                 "type": "string",
-                "pattern": "^(?:(?:context:\\d+|context_over_200k|mode:[a-z0-9_-]{1,80})\\.)?(?:input|output|reasoning|cache_read|cache_write|input_audio|output_audio)$"
+                "pattern": "^(?:(?:[cC][oO][nN][tT][eE][xX][tT]:\\d+|[cC][oO][nN][tT][eE][xX][tT]_[oO][vV][eE][rR]_200[kK]|[mM][oO][dD][eE]:[a-zA-Z0-9_-]{1,80})\\.)?(?:[iI][nN][pP][uU][tT]|[oO][uU][tT][pP][uU][tT]|[rR][eE][aA][sS][oO][nN][iI][nN][gG]|[cC][aA][cC][hH][eE]_[rR][eE][aA][dD]|[cC][aA][cC][hH][eE]_[wW][rR][iI][tT][eE]|[iI][nN][pP][uU][tT]_[aA][uU][dD][iI][oO]|[oO][uU][tT][pP][uU][tT]_[aA][uU][dD][iI][oO])$"
               },
               "additionalProperties": {
                 "type": "number",

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "snapshotDate": "2026-08-30",
-  "revision": "28564286c31c4dc1c690df79fc5ca66ac8f6f492a9aff05b02601e6bac316c82",
+  "revision": "a6337f37e74f6eabdf41e407b724df7450b3e547ea8b8af0fc9745a9de2a4dae",
   "models": [
     {
       "id": "opencode/big-pickle",
@@ -19,7 +19,8 @@
       "api": {
         "id": null,
         "npm": null,
-        "url": null
+        "url": null,
+        "urlValid": true
       },
       "capabilities": {
         "effective": {
@@ -99,7 +100,8 @@
       "api": {
         "id": null,
         "npm": null,
-        "url": null
+        "url": null,
+        "urlValid": true
       },
       "capabilities": {
         "effective": {
@@ -179,7 +181,8 @@
       "api": {
         "id": null,
         "npm": null,
-        "url": null
+        "url": null,
+        "urlValid": true
       },
       "capabilities": {
         "effective": {
@@ -263,7 +266,8 @@
       "api": {
         "id": null,
         "npm": null,
-        "url": null
+        "url": null,
+        "urlValid": true
       },
       "capabilities": {
         "effective": {
@@ -349,7 +353,8 @@
       "api": {
         "id": null,
         "npm": null,
-        "url": null
+        "url": null,
+        "urlValid": true
       },
       "capabilities": {
         "effective": {
@@ -426,7 +431,8 @@
       "api": {
         "id": null,
         "npm": null,
-        "url": null
+        "url": null,
+        "urlValid": true
       },
       "capabilities": {
         "effective": {

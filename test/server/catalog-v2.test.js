@@ -216,3 +216,76 @@ test("positive CLI conflicts, malformed extra rates and conflicting provider ide
     );
   }
 });
+test("invalid live URLs stay redacted and block pricing through parsing, persistence and prior reuse", () => {
+  const key = "Nested/Model";
+  const id = `vendor/${key}`;
+  const publicMetadata = normalizeModelsDev(
+    {
+      vendor: {
+        id: "vendor",
+        npm: "sdk",
+        models: { [key]: { id: key, cost: { input: 0, output: 0 } } },
+      },
+    },
+    { fetchedAt: now },
+  );
+  const parse = (url) =>
+    parseOpenCodeVerboseCatalog(
+      `${id}\n${JSON.stringify({ ...model(key), api: { id: key, npm: "sdk", ...(url === undefined ? {} : { url }) } })}`,
+      { observedAt: now },
+    );
+  const clean = validateCatalog(
+    mergeDiscoveredCatalog(loadModelCatalog(), parse(undefined), {
+      publicMetadata,
+      now: Date.parse(now),
+    }),
+  );
+  assert.equal(
+    classifyModelPricing(clean.models.find((entry) => entry.id === id)),
+    "free",
+  );
+  for (const url of [
+    "https://custom.example/v1?key=TOP_SECRET",
+    "https://user:TOP_SECRET@custom.example/v1",
+    "https://custom.example/v1#TOP_SECRET",
+    "TOP_SECRET invalid url",
+    "",
+    123,
+  ]) {
+    const parsed = parse(url);
+    assert.equal(parsed[0].api.url, null);
+    for (const options of [{ publicMetadata }, {}]) {
+      const merged = validateCatalog(
+        mergeDiscoveredCatalog(clean, parsed, {
+          ...options,
+          now: Date.parse(now),
+        }),
+      );
+      const entry = merged.models.find((entry) => entry.id === id);
+      assert.equal(
+        classifyModelPricing(entry),
+        "unknown",
+        JSON.stringify({ url, options: !!options.publicMetadata }),
+      );
+      assert.equal(entry.api.urlValid, false);
+      assert.doesNotMatch(
+        JSON.stringify(merged),
+        /TOP_SECRET|custom\.example|user:/,
+      );
+      const restored = validateCatalog(JSON.parse(JSON.stringify(merged)));
+      assert.equal(
+        restored.models.find((entry) => entry.id === id).api.urlValid,
+        false,
+      );
+      assert.equal(
+        classifyModelPricing(
+          mergeDiscoveredCatalog(restored, parsed, {
+            publicMetadata,
+            now: Date.parse(now),
+          }).models.find((entry) => entry.id === id),
+        ),
+        "unknown",
+      );
+    }
+  }
+});

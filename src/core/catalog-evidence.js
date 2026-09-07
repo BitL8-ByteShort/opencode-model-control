@@ -1,17 +1,36 @@
 import { z } from "zod";
 const timestamp = z.iso.datetime().nullable();
-const ratePath =
-  /^(?:(?:context:\d+|context_over_200k|mode:[a-z0-9_-]{1,80})\.)?(?:input|output|reasoning|cache_read|cache_write|input_audio|output_audio)$/i;
+// JSON Schema cannot carry RegExp flags. Spell ASCII case folding in the
+// pattern itself so exported schemas and runtime validation agree exactly.
+const asciiCaseInsensitive = (word) =>
+  word.replace(
+    /[a-z]/gi,
+    (letter) => `[${letter.toLowerCase()}${letter.toUpperCase()}]`,
+  );
+const rateDimensions = [
+  "input",
+  "output",
+  "reasoning",
+  "cache_read",
+  "cache_write",
+  "input_audio",
+  "output_audio",
+];
+const ratePath = new RegExp(
+  `^(?:(?:${asciiCaseInsensitive("context")}:\\d+|${asciiCaseInsensitive("context_over_200k")}|${asciiCaseInsensitive("mode")}:[a-zA-Z0-9_-]{1,80})\\.)?(?:${rateDimensions.map(asciiCaseInsensitive).join("|")})$`,
+);
+
 export const apiIdentitySchema = z.object({
   id: z
     .string()
-    .regex(/^[a-z0-9@~][a-z0-9._:+/@~-]*$/i)
+    .regex(/^[a-zA-Z0-9@~][a-zA-Z0-9._:+/@~-]*$/)
     .nullable(),
   npm: z
     .string()
-    .regex(/^[@a-z0-9][@a-z0-9/._-]*$/i)
+    .regex(/^[@a-zA-Z0-9][@a-zA-Z0-9/._-]*$/)
     .nullable(),
   url: z.string().url().nullable(),
+  urlValid: z.boolean().default(true),
 });
 export const pricingSchema = z.object({
   class: z.enum(["free", "paid", "unknown"]),
@@ -103,7 +122,9 @@ export const publicSnapshotSchema = z.object({
   fetchedAt: z.iso.datetime(),
   expiresAt: z.iso.datetime(),
   models: z.record(
-    z.string().regex(/^[a-z0-9][a-z0-9._-]*\/[a-z0-9@~][a-z0-9._:+/@~-]*$/i),
+    z
+      .string()
+      .regex(/^[a-zA-Z0-9][a-zA-Z0-9._-]*\/[a-zA-Z0-9@~][a-zA-Z0-9._:+/@~-]*$/),
     z.object({
       api: apiIdentitySchema,
       pricing: pricingSchema.pick({ class: true, rates: true, reasons: true }),

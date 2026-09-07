@@ -130,3 +130,36 @@ test("schema, redirect, declared length and cache write failures preserve prior 
   assert.equal(failedWrite.snapshot.fetchedAt, first.snapshot.fetchedAt);
   assert.doesNotMatch(JSON.stringify(failedWrite), /SECRET/);
 });
+test("invalid URL identity remains redacted and invalid across cache read and revalidation", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "omc-invalid-url-"));
+  const path = join(dir, "cache.json");
+  const invalid = {
+    ...raw,
+    vendor: { ...raw.vendor, api: "https://custom.example/v1?key=TOP_SECRET" },
+  };
+  try {
+    const first = await refreshModelsDev({
+      path,
+      fetch: async () => new Response(JSON.stringify(invalid)),
+    });
+    assert.equal(first.error, null);
+    const cached = await readModelsDevCache({ path });
+    assert.equal(cached.snapshot.models["vendor/new"].api.urlValid, false);
+    assert.equal(cached.snapshot.models["vendor/new"].pricing.class, "unknown");
+    const revalidated = await refreshModelsDev({
+      path,
+      fetch: async () => new Response(null, { status: 304 }),
+    });
+    assert.equal(revalidated.snapshot.models["vendor/new"].api.urlValid, false);
+    assert.equal(
+      revalidated.snapshot.models["vendor/new"].pricing.class,
+      "unknown",
+    );
+    assert.doesNotMatch(
+      await readFile(path, "utf8"),
+      /TOP_SECRET|custom\.example/,
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

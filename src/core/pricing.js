@@ -118,6 +118,12 @@ function safeUrl(value) {
   }
 }
 export function normalizeApiIdentity(value) {
+  const url = safeUrl(value?.url);
+  // Do not let redaction turn an invalid endpoint into an absent endpoint.
+  // Preserve this flag through repeated normalization and persisted snapshots.
+  const urlValid =
+    value?.urlValid !== false &&
+    (value?.url === undefined || value?.url === null || url !== null);
   return {
     id:
       typeof value?.id === "string" &&
@@ -129,7 +135,8 @@ export function normalizeApiIdentity(value) {
       /^[@a-z0-9][@a-z0-9/._-]*$/i.test(value.npm)
         ? value.npm
         : null,
-    url: safeUrl(value?.url),
+    url,
+    urlValid,
   };
 }
 const tri = (value) => (typeof value === "boolean" ? value : null);
@@ -252,11 +259,7 @@ export function normalizeModelsDev(raw, { fetchedAt, digest } = {}) {
         url: model.provider?.api ?? provider.api,
       });
       const pricing = analyzeRates(model.cost, model.experimental?.modes);
-      if (
-        model.id !== key ||
-        !api.npm ||
-        ((model.provider?.api ?? provider.api) != null && !api.url)
-      ) {
+      if (model.id !== key || !api.npm || !api.urlValid) {
         pricing.class = "unknown";
         pricing.reasons.push("identity-conflict");
       }
@@ -285,7 +288,8 @@ export function resolveModelEvidence(live, snapshot) {
     ["id", "npm", "url"].some((key) => api[key] !== record.api[key]) ||
     !api.id ||
     !api.npm ||
-    (live.api?.url && !api.url);
+    !api.urlValid ||
+    record.api.urlValid === false;
   return {
     ...record.pricing,
     ...(conflict ? { class: "unknown", reasons: ["identity-conflict"] } : {}),

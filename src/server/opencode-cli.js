@@ -386,6 +386,7 @@ export function mergeDiscoveredCatalog(
     } else if (prior?.pricing?.source === "https://models.dev/api.json") {
       pricing = prior.pricing;
       if (
+        !api.urlValid ||
         JSON.stringify(api) !==
           JSON.stringify(normalizeApiIdentity(prior.api)) ||
         reported.class === "unknown" ||
@@ -404,7 +405,8 @@ export function mergeDiscoveredCatalog(
     if (
       (!publicMetadata || !publicMetadata.models?.[id]) &&
       pricing.source !== "https://models.dev/api.json" &&
-      reported.class === "paid"
+      reported.class === "paid" &&
+      api.urlValid
     ) {
       pricing = {
         ...reported,
