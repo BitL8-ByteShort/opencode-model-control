@@ -284,6 +284,19 @@ export function toLiveAvailability(catalog, liveModels) {
   );
 }
 
+function retainCliConflict(pricing, priorPricing) {
+  const conflicts = (priorPricing?.reasons ?? []).filter((reason) =>
+    ["conflicting-cli-rates", "identity-or-rate-conflict"].includes(reason),
+  );
+  return conflicts.length
+    ? {
+        ...pricing,
+        class: "unknown",
+        reasons: [...new Set([...pricing.reasons, ...conflicts])],
+      }
+    : pricing;
+}
+
 export function mergeDiscoveredCatalog(
   baseCatalog,
   liveModels,
@@ -308,6 +321,11 @@ export function mergeDiscoveredCatalog(
     const curated = curatedById.get(id);
     const live = liveById.get(id);
     if (!live) {
+      // Public metadata may revoke or update evidence, but an omitted CLI
+      // observation cannot resolve a previously observed pricing conflict.
+      const publicPricing = publicMetadata
+        ? resolveModelEvidence(prior, publicMetadata)
+        : null;
       const capabilityDerived =
         !curated &&
         (prior?.profileSource === "capability" ||
@@ -316,13 +334,12 @@ export function mergeDiscoveredCatalog(
         ...prior,
         ...(publicMetadata
           ? {
-              pricing: resolveModelEvidence(prior, publicMetadata),
+              pricing: retainCliConflict(publicPricing, prior.pricing),
               capabilities: {
                 ...prior.capabilities,
-                supplemental: resolveModelEvidence(
-                  prior,
-                  publicMetadata,
-                ).reasons.includes("identity-conflict")
+                supplemental: publicPricing.reasons.includes(
+                  "identity-conflict",
+                )
                   ? null
                   : (publicMetadata.models?.[id]?.capabilities ?? null),
               },
@@ -419,6 +436,10 @@ export function mergeDiscoveredCatalog(
       };
     }
     const pricingClass = classifyPricingEvidence(pricing, { now });
+    // A fresh observation resolves the rejection only when its resulting
+    // evidence is known and current; unknown metadata must not wash it out.
+    if (pricingClass === "unknown")
+      pricing = retainCliConflict(pricing, prior?.pricing);
     const verifiedPricing = pricingClass !== "unknown";
     const effective =
       live.capabilities ??

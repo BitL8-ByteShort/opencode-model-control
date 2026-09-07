@@ -65,6 +65,72 @@ function merge(
     ),
   );
 }
+
+test("omitted CLI observations retain conflicts while new public evidence still updates rates and revocations", () => {
+  const key = "conflicting-price";
+  const initial = merge(key, { input: 1, output: 2 }, {}, publicData(key));
+  const entry = (catalog) =>
+    catalog.models.find((m) => m.id === `opencode/${key}`);
+  assert.deepEqual(entry(initial).pricing.reasons, ["conflicting-cli-rates"]);
+  for (const publicMetadata of [
+    publicData(key),
+    publicData(key, { input: 3, output: 4 }),
+    publicData(key, { input: 0 }),
+    publicData("different-model"),
+  ]) {
+    const updated = validateCatalog(
+      mergeDiscoveredCatalog(initial, [], { publicMetadata }),
+    );
+    assert.equal(classifyModelPricing(entry(updated)), "unknown");
+    assert.ok(entry(updated).pricing.reasons.includes("conflicting-cli-rates"));
+    if (publicMetadata.models[`opencode/${key}`]) {
+      assert.deepEqual(
+        entry(updated).pricing.rates,
+        publicMetadata.models[`opencode/${key}`].pricing.rates,
+      );
+      assert.equal(entry(updated).pricing.digest, publicMetadata.digest);
+    } else {
+      assert.ok(
+        entry(updated).pricing.reasons.includes("model-not-in-public-source"),
+      );
+    }
+    const repeated = validateCatalog(
+      mergeDiscoveredCatalog(updated, [], { publicMetadata: publicData(key) }),
+    );
+    assert.equal(classifyModelPricing(entry(repeated)), "unknown");
+  }
+});
+
+test("fresh discovery with unresolved public evidence cannot erase a prior CLI conflict before omission", () => {
+  const key = "unresolved-price";
+  let catalog = merge(key, { input: 1, output: 2 }, {}, publicData(key));
+  const live = parseOpenCodeVerboseCatalog(
+    `opencode/${key}\n${JSON.stringify(model(key))}`,
+  );
+  catalog = validateCatalog(
+    mergeDiscoveredCatalog(catalog, live, {
+      publicMetadata: publicData(key, { input: 0 }),
+    }),
+  );
+  catalog = validateCatalog(
+    mergeDiscoveredCatalog(catalog, [], { publicMetadata: publicData(key) }),
+  );
+  assert.equal(
+    classifyModelPricing(
+      catalog.models.find((m) => m.id === `opencode/${key}`),
+    ),
+    "unknown",
+  );
+  catalog = validateCatalog(
+    mergeDiscoveredCatalog(catalog, live, { publicMetadata: publicData(key) }),
+  );
+  assert.equal(
+    classifyModelPricing(
+      catalog.models.find((m) => m.id === `opencode/${key}`),
+    ),
+    "free",
+  );
+});
 test("Muse 1.3 and any unseen nested model use dynamic public evidence without roster entries", () => {
   for (const key of [
     "muse-spark-1.3-contributor-free",

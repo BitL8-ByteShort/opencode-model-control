@@ -5,6 +5,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ControlService } from "../../src/server/service.js";
 import { publicFixture, liveModel } from "../fixtures/public-metadata.js";
+import {
+  createMediaRoutingHooks,
+  loadSavedRoutingPolicy,
+} from "../../src/opencode/plugin-runtime.js";
 const discovery = (models) => async () => ({
   installed: true,
   version: "1.18.22",
@@ -348,4 +352,118 @@ test("failed attempts preserve last successful refresh and both source success t
   assert.equal(after.status, "failure");
   assert.equal(after.stale, true);
   assert.match(after.warning, /pricing/i);
+});
+
+test("failed refresh after a CLI pricing conflict cannot reauthorize an unchanged loaded zero-rate host", async (t) => {
+  const { service, settingsPath, directory } = await setup(t);
+  const state = service.getState();
+  await service.updateSettings(state.settings, {
+    expectedSettingsRevision: state.settingsRevision,
+  });
+  const host = {
+    id: "model",
+    providerID: "new",
+    api: liveModel("new/model").api,
+    capabilities: {
+      toolcall: true,
+      input: { text: true },
+      output: { text: true },
+    },
+    options: {},
+    cost: { input: 0, output: 0 },
+  };
+  const hooks = createMediaRoutingHooks({
+    directory,
+    loadPolicy: () => loadSavedRoutingPolicy({ settingsPath }),
+    client: {
+      config: {
+        providers: async () => ({
+          data: { providers: [{ id: "new", models: { model: host } }] },
+        }),
+      },
+    },
+  });
+  const message = {
+    id: "before-conflict",
+    agent: "omc-code-worker",
+    model: { providerID: "new", modelID: "model" },
+  };
+  const turn = (id) =>
+    hooks["chat.message"](
+      { sessionID: id, agent: message.agent },
+      {
+        message: { ...message, id },
+        parts: [{ type: "text", text: "Implement the change" }],
+      },
+    );
+  const dispatch = () =>
+    hooks["chat.params"](
+      {
+        sessionID: "before-conflict",
+        agent: message.agent,
+        message,
+        model: host,
+        provider: { id: "new", options: {} },
+      },
+      { options: {} },
+    );
+  await turn(message.id);
+  await dispatch();
+
+  service.discovery = discovery([
+    liveModel("new/model", { inputCost: 1, outputCost: 2 }),
+  ]);
+  await service.refreshCatalog();
+  const rejected = service.getState();
+  assert.equal(
+    rejected.catalog.find((m) => m.id === "new/model").pricingClass,
+    "unknown",
+  );
+  await assert.rejects(turn("conflict"), { code: "OMC_ROUTE_UNAVAILABLE" });
+  await assert.rejects(dispatch(), { code: "OMC_ROUTE_UNAVAILABLE" });
+
+  service.discovery = async () => ({
+    installed: true,
+    complete: false,
+    models: [],
+  });
+  service.metadataFetch = async () => new Response("{}", { status: 503 });
+  await service.refreshCatalog();
+  const failed = service.getState();
+  assert.equal(failed.system.catalog.status, "failure");
+  assert.equal(
+    failed.system.catalog.pricingSucceededAt,
+    rejected.system.catalog.pricingSucceededAt,
+  );
+  assert.equal(
+    failed.catalog.find((m) => m.id === "new/model").available,
+    true,
+  );
+  await Promise.all([
+    assert.rejects(turn("after-failure"), { code: "OMC_ROUTE_UNAVAILABLE" }),
+    assert.rejects(dispatch(), { code: "OMC_ROUTE_UNAVAILABLE" }),
+  ]);
+  const persisted = await loadSavedRoutingPolicy({ settingsPath });
+  assert.ok(
+    persisted.catalog.models
+      .find((m) => m.id === "new/model")
+      .pricing.reasons.includes("conflicting-cli-rates"),
+  );
+  assert.equal(
+    failed.catalog.find((m) => m.id === "new/model").effectiveEnabled,
+    false,
+  );
+
+  service.discovery = discovery([liveModel("new/model")]);
+  service.metadataFetch = async () =>
+    new Response(JSON.stringify(publicFixture([{ id: "new/model" }])));
+  await service.refreshCatalog();
+  assert.equal(
+    service.getState().catalog.find((m) => m.id === "new/model")
+      .effectiveEnabled,
+    true,
+  );
+  await turn("recovered");
+  await dispatch();
+  assert.deepEqual(host.cost, { input: 0, output: 0 });
 });
