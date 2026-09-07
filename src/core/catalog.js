@@ -165,7 +165,7 @@ function normalizeModel(value) {
   if (roles.orchestrator !== undefined && !value.canOrchestrate) {
     invalidCatalog(`Model ${id} cannot hold its declared orchestrator role.`);
   }
-  if (roles["vision-worker"] !== undefined && !input.includes("image")) {
+  if (roles["vision-worker"] !== undefined && !["image", "audio", "video", "pdf"].some((modality) => input.includes(modality))) {
     invalidCatalog(`Model ${id} cannot hold its declared vision role.`);
   }
   if (roles["code-worker"] !== undefined && !access.includes("write")) {

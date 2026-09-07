@@ -393,7 +393,7 @@ xai/grok-4.6
   const settings = validateSettings(draft, catalog);
   const config = buildOpenCodeConfig({ catalog, settings });
 
-  assert.equal(config.agent["omc-code-worker"].model, "xai/grok-4.6");
+  assert.equal(config.agent["omc-code-worker"].model, undefined);
 });
 
 test("discovery reports a stable, secret-free failure", async () => {
@@ -406,4 +406,13 @@ test("discovery reports a stable, secret-free failure", async () => {
   assert.equal(result.installed, false);
   assert.equal(result.error.code, "OPENCODE_NOT_FOUND");
   assert.doesNotMatch(JSON.stringify(result), /secret|credential-like|abc/u);
+});
+
+test('unfamiliar audio-only input with effective tools receives the media role without image requirements',()=>{
+ const parsed=parseOpenCodeVerboseCatalog(`unfamiliar/audio-reader
+ {"name":"Audio reader","status":"active","cost":{"input":1,"output":1},"limit":{"context":100000},"capabilities":{"toolcall":true,"input":{"text":true,"audio":true,"image":false},"output":{"text":true}}}`);
+ const catalog=validateCatalog(mergeDiscoveredCatalog(loadModelCatalog(),parsed));
+ const model=catalog.models.find(m=>m.id==='unfamiliar/audio-reader');
+ assert.equal(model.roles['vision-worker'],25);
+ assert.deepEqual(model.modalities.input,['text','audio']);
 });

@@ -4,11 +4,10 @@ import {
   migrateSettings,
   validateCatalog,
 } from "../core/index.js";
-import {
-  readCatalogSnapshot,
-  resolveCatalogSnapshotPath,
-} from "../server/catalog-store.js";
-import { readSettings, resolveSettingsPath } from "../server/settings-store.js";
+import { resolveCatalogSnapshotPath } from "../server/catalog-store.js";
+import { resolveSettingsPath } from "../server/settings-store.js";
+import { readControlSnapshot } from "../server/state-snapshot.js";
+import { normalizeApiIdentity } from "../core/pricing.js";
 import { classifyRouteRequest } from "../server/task-classifier.js";
 
 const ROUTER_AGENT = "omc-router";
@@ -50,13 +49,19 @@ function userTextForIntent(parts) {
 }
 
 export function mediaTurnAllowsWorkspaceChanges(parts, modalities) {
-  if (!Array.isArray(parts) || !Array.isArray(modalities) || modalities.length === 0) {
+  if (
+    !Array.isArray(parts) ||
+    !Array.isArray(modalities) ||
+    modalities.length === 0
+  ) {
     return false;
   }
   const task = userTextForIntent(parts);
   if (!task) return false;
   try {
-    return classifyRouteRequest({ task, modality: modalities[0] }).access === "write";
+    return (
+      classifyRouteRequest({ task, modality: modalities[0] }).access === "write"
+    );
   } catch {
     return false;
   }
@@ -159,24 +164,21 @@ export async function loadSavedRoutingPolicy({
   catalogPath = resolveCatalogSnapshotPath(settingsPath),
 } = {}) {
   try {
-    const catalog = await readCatalogSnapshot({ path: catalogPath });
-    if (!catalog) throw new MediaRoutingError("OMC_MEDIA_POLICY_UNAVAILABLE");
-    const settings = await readSettings({
-      path: settingsPath,
-      migrate(value) {
-        if (value === undefined) {
-          throw new MediaRoutingError("OMC_MEDIA_POLICY_UNAVAILABLE");
-        }
-        return migrateSettings(value, catalog);
-      },
+    const snapshot = await readControlSnapshot({
+      settingsPath,
+      catalogSnapshotPath: catalogPath,
     });
-    return { catalog, settings };
+    if (!snapshot.settingsExists || !snapshot.catalogExists)
+      throw new MediaRoutingError("OMC_MEDIA_POLICY_UNAVAILABLE");
+    return snapshot;
   } catch (error) {
     throw asMediaRoutingError(error);
   }
 }
 
-export function createMediaRoutingHook({ loadPolicy = loadSavedRoutingPolicy } = {}) {
+export function createMediaRoutingHook({
+  loadPolicy = loadSavedRoutingPolicy,
+} = {}) {
   if (typeof loadPolicy !== "function") {
     throw new TypeError("loadPolicy must be a function");
   }
@@ -217,40 +219,399 @@ export function createMediaRoutingHook({ loadPolicy = loadSavedRoutingPolicy } =
   };
 }
 
-export function createMediaRoutingHooks({ loadPolicy = loadSavedRoutingPolicy } = {}) {
-  const readOnlySessions = new Set();
-  const routeMediaTurn = createMediaRoutingHook({ loadPolicy });
+const OWNED_ROLES = Object.freeze({
+  "omc-router": "orchestrator",
+  "omc-code-worker": "code-worker",
+  "omc-vision-worker": "vision-worker",
+  "omc-reviewer": "reviewer",
+});
+function fail(code = "OMC_ROUTE_UNAVAILABLE") {
+  throw new MediaRoutingError(
+    code,
+    code === "OMC_HOST_MODEL_MISSING"
+      ? "The saved model is absent from this running OpenCode instance. Reload OpenCode and retry."
+      : "OpenCode Model Control blocked this request. Check saved policy, model availability, and fresh pricing, then retry.",
+  );
+}
+function identityMatches(expected, actual) {
+  const a = normalizeApiIdentity(expected),
+    b = normalizeApiIdentity(actual);
+  return (
+    a.urlValid &&
+    b.urlValid &&
+    a.id !== null &&
+    a.npm !== null &&
+    a.id === b.id &&
+    a.npm === b.npm &&
+    a.url === b.url
+  );
+}
+function hostSupports(model, requirements) {
+  return (
+    model?.capabilities?.output?.text === true &&
+    requirements.modalities.every(
+      (m) => model.capabilities?.input?.[m] === true,
+    ) &&
+    (requirements.role === "reviewer" || model.capabilities?.toolcall === true)
+  );
+}
+// Inspect only identity-affecting fields in memory. Never persist or interpolate
+// these objects: provider options can contain credentials and private headers.
+function positiveRate(value) {
+  return typeof value === "number"
+    ? value > 0
+    : value &&
+        typeof value === "object" &&
+        Object.values(value).some(positiveRate);
+}
+function optionsMatch(options, api, depth = 0) {
+  if (!options || typeof options !== "object") return true;
+  if (depth > 12) return false;
+  for (const [key, value] of Object.entries(options)) {
+    if (/^(headers|apiKey|token|accessToken|credentials|timeout)$/i.test(key))
+      continue;
+    if (/^(fetch|dispatcher|proxy|proxyUrl)$/i.test(key)) return false;
+    if (/^(baseURL|baseUrl|url|endpoint|apiEndpoint)$/i.test(key)) {
+      const normalized = normalizeApiIdentity({ ...api, url: value });
+      if (
+        !normalized.urlValid ||
+        normalized.url !== normalizeApiIdentity(api).url
+      )
+        return false;
+    } else if (
+      /^(model|modelID|modelId|deployment|deploymentId|resourceName|region|location|project|projectId|provider|providerID|npm)$/i.test(
+        key,
+      )
+    ) {
+      return false;
+    } else if (
+      value &&
+      typeof value === "object" &&
+      !optionsMatch(value, api, depth + 1)
+    )
+      return false;
+  }
+  return true;
+}
 
+export function createMediaRoutingHooks({
+  loadPolicy = loadSavedRoutingPolicy,
+  client,
+  directory,
+} = {}) {
+  const routes = new Map();
+  const readOnlySessions = new Set();
+  const workflows = new Map();
+  const children = new Map();
+  const retained = new Map();
+  const pending = new Map();
+  const background = new Map();
+  const completed = new Map();
+  function completeChild(operation, childID) {
+    const childRoute = routes.get(childID),
+      workflow = workflows.get(operation.parent);
+    if (
+      !childRoute ||
+      childRoute.agent !== operation.agent ||
+      !workflow ||
+      workflow !== operation.workflow
+    )
+      return;
+    if (operation.agent === "omc-code-worker") {
+      children.set(childID, { parent: operation.parent, id: childRoute.id });
+      workflow.worker = childID;
+    } else if (operation.agent === "omc-reviewer" && workflow.worker)
+      workflow.reviewed = true;
+  }
+
+  async function policy() {
+    try {
+      const value = await loadPolicy();
+      const catalog = validateCatalog(value.catalog);
+      return { catalog, settings: migrateSettings(value.settings, catalog) };
+    } catch {
+      fail("OMC_MEDIA_POLICY_UNAVAILABLE");
+    }
+  }
+  async function inventory() {
+    try {
+      const result = await client.config.providers({
+        query: { directory },
+        throwOnError: true,
+      });
+      if (!Array.isArray(result?.data?.providers))
+        fail("OMC_HOST_INVENTORY_UNAVAILABLE");
+      const models = new Map();
+      for (const provider of result.data.providers) {
+        for (const [id, model] of Object.entries(provider.models ?? {})) {
+          if (model?.id !== id || model?.providerID !== provider.id) continue;
+          models.set(`${provider.id}/${id}`, model);
+        }
+      }
+      return models;
+    } catch {
+      fail("OMC_HOST_INVENTORY_UNAVAILABLE");
+    }
+  }
+  function select(current, host, requirements, retainedID) {
+    const configured =
+      retainedID ?? current.settings.roleAssignments[requirements.role];
+    const candidates = eligibleModelsForRole({ ...current, ...requirements });
+    const selected =
+      configured === AUTO_ASSIGNMENT
+        ? candidates.find(
+            (m) =>
+              host.has(m.id) &&
+              identityMatches(m.api, host.get(m.id).api) &&
+              hostSupports(host.get(m.id), requirements),
+          )
+        : candidates.find((m) => m.id === configured);
+    if (!selected) fail();
+    if (!host.has(selected.id)) fail("OMC_HOST_MODEL_MISSING");
+    if (
+      !identityMatches(selected.api, host.get(selected.id).api) ||
+      !hostSupports(host.get(selected.id), requirements)
+    )
+      fail("OMC_DISPATCH_IDENTITY_CONFLICT");
+    return selected;
+  }
   return {
     async event({ event }) {
-      if (event?.type === "session.deleted") {
-        readOnlySessions.delete(event.properties?.info?.id);
+      if (event?.type === "message.updated") {
+        const info = event.properties?.info,
+          route = routes.get(info?.sessionID);
+        // Only a successful terminal assistant reply for this child's current
+        // user message is completion; running tools, acknowledgement, and errors
+        // cannot arm repair. Handle either ordering with task acknowledgement.
+        if (
+          route &&
+          info.role === "assistant" &&
+          info.agent === route.agent &&
+          info.parentID === route.messageID &&
+          info.time?.completed &&
+          ["stop", "end_turn"].includes(info.finish) &&
+          !info.error
+        ) {
+          completed.set(info.sessionID, route.messageID);
+          const operation = background.get(info.sessionID);
+          if (operation) {
+            completeChild(operation, info.sessionID);
+            background.delete(info.sessionID);
+          }
+        }
+        return;
       }
+      if (event?.type !== "session.deleted") return;
+      const id = event.properties?.info?.id;
+      for (const map of [
+        routes,
+        workflows,
+        children,
+        retained,
+        background,
+        completed,
+      ])
+        map.delete(id);
+      readOnlySessions.delete(id);
+      for (const [key, value] of pending)
+        if (value.parent === id) pending.delete(key);
+      for (const [child, value] of children)
+        if (value.parent === id) {
+          children.delete(child);
+          retained.delete(child);
+        }
     },
     async "chat.message"(input, output) {
-      if (typeof input?.sessionID === "string") {
+      const agent = output?.message?.agent ?? input?.agent;
+      const role = OWNED_ROLES[agent];
+      if (!role) {
+        routes.delete(input.sessionID);
         readOnlySessions.delete(input.sessionID);
+        return;
       }
-      await routeMediaTurn(input, output);
+      try {
+        const media = mediaModalitiesFromParts(output?.parts);
+        const requirements = {
+          role:
+            role === "orchestrator" && media.length ? "vision-worker" : role,
+          modalities: ["text", ...media],
+          access:
+            role === "code-worker" || (role === "orchestrator" && !media.length)
+              ? "write"
+              : "read",
+        };
+        const current = await policy();
+        const host = await inventory();
+        const selected = select(
+          current,
+          host,
+          requirements,
+          retained.get(input.sessionID),
+        );
+        output.message.model = modelReference(selected.id);
+        delete output.message.variant;
+        readOnlySessions.delete(input.sessionID);
+        if (media.length) {
+          appendSecurityInstruction(output.message);
+          if (
+            role === "orchestrator" &&
+            !mediaTurnAllowsWorkspaceChanges(output.parts, media)
+          )
+            output.message.agent = "omc-vision-worker";
+        }
+        if (output.message.agent === "omc-vision-worker")
+          readOnlySessions.add(input.sessionID);
+        completed.delete(input.sessionID);
+        routes.set(input.sessionID, {
+          id: selected.id,
+          requirements,
+          agent: output.message.agent,
+          messageID: output.message.id,
+        });
+        // Each user turn starts a distinct owned workflow. Ordinary resumed
+        // children have no retained assignment unless a completed owned review
+        // explicitly precedes a return to that same worker.
+        if (
+          agent === "omc-router" &&
+          (!workflows.has(input.sessionID) ||
+            !output.parts.length ||
+            !output.parts.every((part) => part.synthetic === true))
+        ) {
+          for (const [child, workflow] of children)
+            if (workflow.parent === input.sessionID) retained.delete(child);
+          workflows.set(input.sessionID, {
+            worker: null,
+            reviewed: false,
+            repairs: 0,
+          });
+        }
+      } catch (error) {
+        throw asMediaRoutingError(error);
+      }
+    },
+    async "chat.params"(input, output) {
+      if (!OWNED_ROLES[input?.agent]) return;
+      const route = routes.get(input.sessionID);
       if (
-        typeof input?.sessionID === "string" &&
-        output?.message?.agent === "omc-vision-worker"
-      ) {
-        readOnlySessions.add(input.sessionID);
-      }
+        !route ||
+        route.agent !== input.agent ||
+        route.messageID !== input.message?.id
+      )
+        fail("OMC_DISPATCH_ROUTE_MISSING");
+      const current = await policy();
+      const host = await inventory();
+      if (
+        !eligibleModelsForRole({ ...current, ...route.requirements }).some(
+          (m) => m.id === route.id,
+        )
+      )
+        fail();
+      const selected = select(
+        current,
+        host,
+        route.requirements,
+        retained.get(input.sessionID),
+      );
+      const actual = input.model;
+      if (
+        (input.provider?.id ?? input.provider?.info?.id) !==
+          actual?.providerID ||
+        selected.id !== route.id ||
+        `${actual?.providerID}/${actual?.id}` !== route.id ||
+        !identityMatches(selected.api, actual?.api) ||
+        !hostSupports(actual, route.requirements) ||
+        !optionsMatch(input.provider?.options, selected.api) ||
+        !optionsMatch(actual?.options, selected.api) ||
+        !optionsMatch(output?.options, selected.api)
+      )
+        fail("OMC_DISPATCH_IDENTITY_CONFLICT");
+      // CLI positives contradict free evidence even if the host changed after
+      // discovery. Independent paid evidence remains governed by saved policy.
+      if (
+        !["input", "output"].every(
+          (key) =>
+            typeof actual.cost?.[key] === "number" &&
+            Number.isFinite(actual.cost[key]) &&
+            actual.cost[key] >= 0,
+        ) ||
+        (selected.pricing.class === "free" && positiveRate(actual.cost))
+      )
+        fail("OMC_DISPATCH_PRICING_CONFLICT");
     },
     async "permission.ask"(input, output) {
-      if (readOnlySessions.has(input?.sessionID)) {
-        output.status = "deny";
-      }
+      if (readOnlySessions.has(input?.sessionID)) output.status = "deny";
     },
-    async "tool.execute.before"(input) {
-      if (readOnlySessions.has(input?.sessionID)) {
+    async "tool.execute.before"(input, output) {
+      if (readOnlySessions.has(input?.sessionID))
         throw new MediaRoutingError(
           "OMC_MEDIA_TOOLS_BLOCKED",
           READ_ONLY_FAILURE_MESSAGE,
         );
+      const route = routes.get(input?.sessionID);
+      if (!route) return;
+      if (
+        route.agent === "omc-reviewer" &&
+        !["read", "glob", "grep", "list", "lsp"].includes(input.tool)
+      )
+        fail("OMC_SPECIALIST_TOOLS_BLOCKED");
+      if (
+        route.agent !== "omc-router" &&
+        (input.tool === "task" || input.tool.startsWith("model-control_"))
+      )
+        fail("OMC_SPECIALIST_RECURSION_BLOCKED");
+      if (input.tool !== "task" || !output?.args) return;
+      const args = output.args;
+      if (
+        !OWNED_ROLES[args.subagent_type] ||
+        args.subagent_type === "omc-router"
+      )
+        fail("OMC_SPECIALIST_RECURSION_BLOCKED");
+      const current = await policy();
+      if (current.settings.maxDelegationDepth === 0)
+        fail("OMC_DELEGATION_DISABLED");
+      const workflow = workflows.get(input.sessionID);
+      if (!workflow) fail("OMC_WORKFLOW_UNAVAILABLE");
+      if (args.subagent_type === "omc-code-worker" && args.task_id) {
+        const child = children.get(args.task_id);
+        if (
+          workflow.reviewed &&
+          workflow.worker === args.task_id &&
+          child?.parent === input.sessionID
+        ) {
+          if (workflow.repairs >= current.settings.maxFallbacksPerAssignment)
+            fail("OMC_REPAIR_LIMIT");
+          retained.set(args.task_id, child.id);
+          select(
+            current,
+            await inventory(),
+            { role: "code-worker", modalities: ["text"], access: "write" },
+            child.id,
+          );
+          workflow.repairs++;
+        } else retained.delete(args.task_id);
       }
+      pending.set(`${input.sessionID}/${input.callID}`, {
+        parent: input.sessionID,
+        agent: args.subagent_type,
+        workflow,
+      });
+    },
+    async "tool.execute.after"(input, output) {
+      const key = `${input.sessionID}/${input.callID}`,
+        operation = pending.get(key);
+      pending.delete(key);
+      if (!operation || input.tool !== "task") return;
+      const childID = output?.metadata?.sessionId;
+      if (typeof childID !== "string") return;
+      if (
+        output.metadata.background === true &&
+        (!completed.has(childID) ||
+          completed.get(childID) !== routes.get(childID)?.messageID)
+      ) {
+        background.set(childID, operation);
+        return;
+      }
+      completeChild(operation, childID);
     },
   };
 }

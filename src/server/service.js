@@ -527,7 +527,7 @@ export class ControlService {
       warnings: [
         "Connect manages only the model-control MCP, omc-* agents, its exact plugin array item, and an optional receipt-owned default_agent. Conflicting or user-owned values are never overwritten.",
         "The preview shows the requested default_agent entry. Connect omits it when OpenCode already has a user-owned default.",
-        "The bundled local plugin performs attachment-aware model selection only for omc-router turns and fails closed when the saved policy has no compatible worker.",
+        "The bundled local plugin applies saved policy to every owned OMC role on its next request. Media-only turns stay read-only, and unavailable or unknown-cost routes fail closed.",
       ],
     };
   }

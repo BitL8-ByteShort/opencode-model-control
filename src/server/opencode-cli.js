@@ -551,7 +551,7 @@ function capabilityRoleProfile({
   }
   if (
     acceptsText &&
-    inputModalities.includes("image") &&
+    ["image", "audio", "video", "pdf"].some((modality) => inputModalities.includes(modality)) &&
     returnsText &&
     toolCall
   ) {
