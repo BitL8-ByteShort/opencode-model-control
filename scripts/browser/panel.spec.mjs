@@ -1,7 +1,9 @@
 import { test, expect } from "@playwright/test";
-import { createServer } from "vite";
+import { createServer as createHttpServer } from "node:http";
+import { createHash } from "node:crypto";
+import { resolve, join, extname } from "node:path";
 import { randomBytes } from "node:crypto";
-import { mkdir } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import {
   capabilityDetailsSchema,
   pricingSchema,
@@ -143,133 +145,188 @@ test.beforeAll(async () => {
     capabilityDetailsSchema.parse(entry.capabilities);
     pricingSchema.parse(entry.pricing);
   }
-  server = await createServer({
-    server: { host: "127.0.0.1", port: 0 },
-    plugins: [
-      {
-        name: "isolated-panel-api",
-        configureServer(s) {
-          s.middlewares.use(async (req, res, next) => {
-            if (!req.url.startsWith("/api/")) return next();
-            const path = req.url.split("?")[0];
-            requests.push({ method: req.method, path });
-            res.setHeader("Content-Type", "application/json");
-            const send = (value, status = 200) => {
-              res.statusCode = status;
-              res.end(JSON.stringify(value));
-            };
-            if (
-              req.method !== "GET" &&
-              (req.headers["x-omc-session"] !== token ||
-                req.headers["x-omc-request"] !== "1")
-            )
-              return send(
-                {
-                  error: {
-                    code: "MUTATION_SESSION_REQUIRED",
-                    message:
-                      "This panel is read-only. Open an authorized panel to save.",
-                  },
-                },
-                403,
-              );
-            if (path === "/api/state") {
-              const result = clone(state);
-              const g = getGate;
-              getGate = null;
-              if (g) await g.promise;
-              return send(result);
-            }
-            if (path === "/api/catalog/refresh") {
-              if (refreshGate) await refreshGate.promise;
-              return send(state);
-            }
-            if (path === "/api/settings") {
-              let body = "";
-              for await (const part of req) body += part;
-              const input = JSON.parse(body);
-              saveStarted = input;
-              if (saveGate) await saveGate.promise;
-              if (input.expectedSettingsRevision !== state.settingsRevision)
-                return send(
-                  {
-                    error: {
-                      code: "SETTINGS_CONFLICT",
-                      message: "Saved settings changed elsewhere.",
-                      reasons: [
-                        "Review latest saved settings before retrying.",
-                      ],
-                    },
-                  },
-                  409,
-                );
-              if (selectionConflict)
-                return send(
-                  {
-                    error: {
-                      code: "SELECTION_CONFLICT",
-                      message: "Selected model changed eligibility.",
-                      reasons: ["fixture/Alpha: unknown-pricing"],
-                    },
-                  },
-                  409,
-                );
-              if (input.settings?.schemaVersion !== 3)
-                return send(
-                  {
-                    error: {
-                      code: "INVALID_SETTINGS",
-                      message: "Canonical settings v3 required.",
-                    },
-                  },
-                  400,
-                );
-              state = {
-                ...state,
-                settings: input.settings,
-                settingsRevision: `s${Number(state.settingsRevision.slice(1)) + 1}`,
-              };
-              return send({
-                ...state,
-                rebased: input.catalogRevision !== state.catalogRevision,
-              });
-            }
-            if (path === "/api/opencode/integration/install")
-              return send({
-                installed: true,
-                managed: true,
-                healthy: true,
-                requiresAttention: false,
-                changed: true,
-                message: "Managed plugin updated.",
-              });
-            if (path === "/api/opencode/integration")
-              return send({
-                installed: true,
-                managed: true,
-                healthy: true,
-                requiresAttention: false,
-                message: "Managed plugin current.",
-                defaultAgent: "omc-router",
-              });
-            if (path === "/api/opencode/config")
-              return send({ text: "{}", config: {}, warnings: [] });
-            if (path === "/api/benchmarks/summary")
-              return send({ roles: [], caveats: [], status: "unverified" });
-            if (path === "/api/runtime-qualification")
-              return send({ results: [], boundaries: [], running: false });
-            if (path === "/api/usage") return send(null);
-            return send(
-              { error: { message: "Unexpected fixture API action" } },
-              404,
-            );
-          });
+  const api = async (req, res, next) => {
+    if (!req.url.startsWith("/api/")) return next();
+    const path = req.url.split("?")[0];
+    requests.push({ method: req.method, path });
+    res.setHeader("Content-Type", "application/json");
+    const send = (value, status = 200) => {
+      res.statusCode = status;
+      res.end(JSON.stringify(value));
+    };
+    if (
+      req.method !== "GET" &&
+      (req.headers["x-omc-session"] !== token ||
+        req.headers["x-omc-request"] !== "1")
+    )
+      return send(
+        {
+          error: {
+            code: "MUTATION_SESSION_REQUIRED",
+            message:
+              "This panel is read-only. Open an authorized panel to save.",
+          },
         },
+        403,
+      );
+    if (path === "/api/state") {
+      const result = clone(state);
+      const g = getGate;
+      getGate = null;
+      if (g) await g.promise;
+      return send(result);
+    }
+    if (path === "/api/catalog/refresh") {
+      if (refreshGate) await refreshGate.promise;
+      return send(state);
+    }
+    if (path === "/api/settings") {
+      let body = "";
+      for await (const part of req) body += part;
+      const input = JSON.parse(body);
+      saveStarted = input;
+      if (saveGate) await saveGate.promise;
+      if (input.expectedSettingsRevision !== state.settingsRevision)
+        return send(
+          {
+            error: {
+              code: "SETTINGS_CONFLICT",
+              message: "Saved settings changed elsewhere.",
+              reasons: ["Review latest saved settings before retrying."],
+            },
+          },
+          409,
+        );
+      if (selectionConflict)
+        return send(
+          {
+            error: {
+              code: "SELECTION_CONFLICT",
+              message: "Selected model changed eligibility.",
+              reasons: ["fixture/Alpha: unknown-pricing"],
+            },
+          },
+          409,
+        );
+      if (input.settings?.schemaVersion !== 3)
+        return send(
+          {
+            error: {
+              code: "INVALID_SETTINGS",
+              message: "Canonical settings v3 required.",
+            },
+          },
+          400,
+        );
+      state = {
+        ...state,
+        settings: input.settings,
+        settingsRevision: `s${Number(state.settingsRevision.slice(1)) + 1}`,
+      };
+      return send({
+        ...state,
+        rebased: input.catalogRevision !== state.catalogRevision,
+      });
+    }
+    if (path === "/api/opencode/integration/install")
+      return send({
+        installed: true,
+        managed: true,
+        healthy: true,
+        requiresAttention: false,
+        changed: true,
+        message: "Managed plugin updated.",
+      });
+    if (path === "/api/opencode/integration")
+      return send({
+        installed: true,
+        managed: true,
+        healthy: true,
+        requiresAttention: false,
+        message: "Managed plugin current.",
+        defaultAgent: "omc-router",
+      });
+    if (path === "/api/opencode/config")
+      return send({ text: "{}", config: {}, warnings: [] });
+    if (path === "/api/benchmarks/summary")
+      return send({ roles: [], caveats: [], status: "unverified" });
+    if (path === "/api/runtime-qualification")
+      return send({ results: [], boundaries: [], running: false });
+    if (path === "/api/usage") return send(null);
+    return send({ error: { message: "Unexpected fixture API action" } }, 404);
+  };
+  if (process.env.OMC_PACKAGE_ROOT) {
+    expect(process.env.OMC_TARBALL_SHA256).toMatch(/^[a-f0-9]{64}$/);
+    const dist = resolve(process.env.OMC_PACKAGE_ROOT, "dist");
+    const assets = new Map();
+    const http = createHttpServer((req, res) => {
+      void api(req, res, async () => {
+        try {
+          const path = new URL(req.url, "http://fixture").pathname;
+          const relative = path === "/" ? "index.html" : path.slice(1);
+          const file = resolve(dist, relative);
+          if (!file.startsWith(dist + "/")) {
+            res.writeHead(404);
+            res.end();
+            return;
+          }
+          const bytes = await readFile(file);
+          assets.set(path, createHash("sha256").update(bytes).digest("hex"));
+          res.setHeader(
+            "Content-Type",
+            {
+              ".html": "text/html",
+              ".js": "text/javascript",
+              ".css": "text/css",
+              ".svg": "image/svg+xml",
+            }[extname(file)] || "application/octet-stream",
+          );
+          res.end(bytes);
+        } catch {
+          res.writeHead(404);
+          res.end();
+        }
+      }).catch(() => {
+        res.writeHead(500);
+        res.end();
+      });
+    });
+    await new Promise((done, reject) => {
+      http.once("error", reject);
+      http.listen(0, "127.0.0.1", done);
+    });
+    base = `http://127.0.0.1:${http.address().port}/`;
+    server = {
+      close: async () => {
+        http.closeAllConnections();
+        await new Promise((done) => http.close(done));
+        if (process.env.OMC_BROWSER_ASSET_EVIDENCE_PATH)
+          await writeFile(
+            process.env.OMC_BROWSER_ASSET_EVIDENCE_PATH,
+            JSON.stringify({
+              target: "installed-production-dist",
+              tarballSha256: process.env.OMC_TARBALL_SHA256,
+              assets: [...assets].map(([path, sha256]) => ({ path, sha256 })),
+            }),
+          );
       },
-    ],
-  });
-  await server.listen();
-  base = server.resolvedUrls.local[0];
+    };
+  } else {
+    const { createServer } = await import("vite");
+    server = await createServer({
+      server: { host: "127.0.0.1", port: 0 },
+      plugins: [
+        {
+          name: "isolated-panel-api",
+          configureServer(s) {
+            s.middlewares.use(api);
+          },
+        },
+      ],
+    });
+    await server.listen();
+    base = server.resolvedUrls.local[0];
+  }
 });
 test.afterEach(async () => {
   for (const release of pendingGates) release();
@@ -474,8 +531,16 @@ test("desktop/mobile details and provider/capability filters stay usable; read-o
     .getByRole("combobox", { name: "Capability filter" })
     .selectOption("audio");
   await expect(row(page, "Alpha")).toBeVisible();
-  await mkdir("/tmp/omc-task4-browser", { recursive: true });
-  await page.screenshot({ path: "/tmp/omc-task4-browser/desktop.png" });
+  await mkdir(
+    process.env.OMC_BROWSER_SCREENSHOT_DIR || "/tmp/omc-task4-browser",
+    { recursive: true },
+  );
+  await page.screenshot({
+    path: join(
+      process.env.OMC_BROWSER_SCREENSHOT_DIR || "/tmp/omc-task4-browser",
+      "desktop.png",
+    ),
+  });
   await page.setViewportSize({ width: 390, height: 844 });
   await row(page, "Alpha")
     .getByText("Full capabilities", { exact: true })
@@ -494,9 +559,17 @@ test("desktop/mobile details and provider/capability filters stay usable; read-o
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
-  await page.screenshot({ path: "/tmp/omc-task4-browser/mobile.png" });
   await page.screenshot({
-    path: "/tmp/omc-task4-browser/mobile-full.png",
+    path: join(
+      process.env.OMC_BROWSER_SCREENSHOT_DIR || "/tmp/omc-task4-browser",
+      "mobile.png",
+    ),
+  });
+  await page.screenshot({
+    path: join(
+      process.env.OMC_BROWSER_SCREENSHOT_DIR || "/tmp/omc-task4-browser",
+      "mobile-full.png",
+    ),
     fullPage: true,
   });
   await page

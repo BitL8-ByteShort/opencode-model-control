@@ -90,17 +90,13 @@ jobs:
           npm install --prefix "$RUNNER_TEMP/host122" --no-audit --no-fund opencode-ai@1.18.22
           npm install --prefix "$RUNNER_TEMP/host128" --no-audit --no-fund opencode-ai@1.18.28
           mkdir evidence
-      - name: Actual OpenCode dispatch, synthetic loopback inference
-        run: |
-          OMC_HOST_BINARY="$RUNNER_TEMP/host122/node_modules/.bin/opencode" OMC_EVIDENCE_PATH=evidence/host-1.18.22.json npm run test:host
-          OMC_HOST_BINARY="$RUNNER_TEMP/host128/node_modules/.bin/opencode" OMC_EVIDENCE_PATH=evidence/host-1.18.28.json npm run test:host
-      - name: Exact tarball install, upgrade, restart, panel and MCP acceptance
-        run: OMC_HOST_BINARY="$RUNNER_TEMP/host128/node_modules/.bin/opencode" OMC_EVIDENCE_PATH=evidence/package.json npm run test:package -- artifact/*.tgz
-      - name: Browser interaction acceptance on macOS
-        if: runner.os == 'macOS'
-        run: |
-          npm exec playwright install chromium
-          npm run test:browser
+      - name: Install the pinned browser for exact-artifact acceptance
+        run: npm exec playwright install --with-deps chromium
+      - name: Exact tarball plugin on both hosts, production UI, upgrade and MCP
+        run: OMC_HOST_BINARY_122="$RUNNER_TEMP/host122/node_modules/.bin/opencode" OMC_HOST_BINARY_128="$RUNNER_TEMP/host128/node_modules/.bin/opencode" OMC_EVIDENCE_PATH=evidence/package.json npm run test:package -- artifact/*.tgz
+      - name: Prove damaged package plugin and UI cannot use checkout fallbacks
+        if: matrix.os == 'ubuntu-latest' && matrix.node-version == '22.12.0'
+        run: OMC_HOST_BINARY="$RUNNER_TEMP/host128/node_modules/.bin/opencode" OMC_EVIDENCE_PATH=evidence/artifact-guards.json node scripts/artifact-guards.mjs artifact/*.tgz
       - name: Live public metadata smoke, no inference
         run: OMC_EVIDENCE_PATH=evidence/live-public-metadata.json npm run test:metadata
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

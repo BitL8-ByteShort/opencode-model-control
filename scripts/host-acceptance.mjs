@@ -4,16 +4,36 @@ import { createServer } from "node:http";
 import { spawn, spawnSync } from "node:child_process";
 import { once } from "node:events";
 import { mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { tmpdir, release, arch } from "node:os";
 import { join, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { loadModelCatalog } from "../test/fixtures/catalog.js";
-import { createDefaultSettings, validateCatalog } from "../src/core/index.js";
-import { ControlService } from "../src/server/service.js";
 import { liveModel, publicFixture } from "../test/fixtures/public-metadata.js";
-import { unknownPricing } from "../src/core/pricing.js";
-import { buildOpenCodeConfig } from "../src/opencode/index.js";
-import { readControlSnapshot } from "../src/server/state-snapshot.js";
+const targetRoot = resolve(
+  process.env.OMC_PACKAGE_ROOT || fileURLToPath(new URL("..", import.meta.url)),
+);
+const tarballSha256 = process.env.OMC_TARBALL_SHA256 || null;
+if (process.env.OMC_PACKAGE_ROOT)
+  assert.match(
+    tarballSha256 || "",
+    /^[a-f0-9]{64}$/,
+    "Installed-package tests require their tarball SHA256",
+  );
+const targetImport = (path) =>
+  import(pathToFileURL(join(targetRoot, path)).href);
+const [
+  { createDefaultSettings, validateCatalog },
+  { ControlService },
+  { unknownPricing },
+  { buildOpenCodeConfig },
+  { readControlSnapshot },
+] = await Promise.all([
+  targetImport("src/core/index.js"),
+  targetImport("src/server/service.js"),
+  targetImport("src/core/pricing.js"),
+  targetImport("src/opencode/index.js"),
+  targetImport("src/server/state-snapshot.js"),
+]);
 
 const binary = resolve(
   process.env.OMC_HOST_BINARY ||
@@ -30,9 +50,15 @@ const root = await mkdtemp(join(tmpdir(), "omc-host-acceptance-"));
 const evidence = {
   schemaVersion: 1,
   kind: "actual-host-mocked-inference",
+  target: process.env.OMC_PACKAGE_ROOT
+    ? "installed-tarball"
+    : "checkout-source",
+  tarballSha256,
   host: version.stdout.trim(),
   node: process.version,
   platform: process.platform,
+  osRelease: release(),
+  architecture: arch(),
   scenarios: [],
   requests: [],
 };
@@ -188,7 +214,7 @@ export default async () => ({ "chat.message": async (_input, output) => {
     },
     agent: buildOpenCodeConfig().agent,
     plugin: [
-      pathToFileURL(resolve("src/opencode/plugin.js")).href,
+      pathToFileURL(join(targetRoot, "src/opencode/plugin.js")).href,
       pathToFileURL(interleavePlugin).href,
     ],
     default_agent: "omc-router",
@@ -761,13 +787,17 @@ export default async () => ({ "chat.message": async (_input, output) => {
   });
   await check("owned-slash-subtask", async () => {
     await pin("b");
+    const start = evidence.requests.length;
     const result = await request(`/session/${await session()}/command`, {
       command: "fixture-worker",
       arguments: "",
       agent: "omc-router",
       model: "omctest/a",
     });
-    assert.ok(evidence.requests.at(-1).model === "b");
+    assert.deepEqual(
+      evidence.requests.slice(start).map((r) => r.model),
+      ["b", "b"],
+    );
   });
   await check("slash-summary-changed-parent-pin-blocked", async () => {
     await pin("a");

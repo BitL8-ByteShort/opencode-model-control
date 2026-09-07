@@ -5,7 +5,8 @@ export default defineConfig({
   workers: 1,
   timeout: 30000,
   reporter: "list",
-  outputDir: "/tmp/omc-panel-playwright-results",
+  outputDir:
+    process.env.OMC_BROWSER_OUTPUT_DIR || "/tmp/omc-panel-playwright-results",
   use: {
     headless: true,
     viewport: { width: 1440, height: 1000 },

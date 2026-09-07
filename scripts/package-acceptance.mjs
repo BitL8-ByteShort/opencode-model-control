@@ -13,9 +13,10 @@ import {
   stat,
   rm,
 } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { tmpdir, release, arch } from "node:os";
 import { join, resolve, dirname } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { chromium } from "@playwright/test";
 import { Client } from "@modelcontextprotocol/client";
 import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 
@@ -29,7 +30,25 @@ const sha256 = createHash("sha256")
   .digest("hex");
 if (process.env.OMC_EXPECTED_SHA256)
   assert.equal(sha256, process.env.OMC_EXPECTED_SHA256);
-assert.ok(process.env.OMC_HOST_BINARY, "OMC_HOST_BINARY is required");
+const hostMatrix = [
+  { version: "1.18.22", binary: process.env.OMC_HOST_BINARY_122 },
+  {
+    version: "1.18.28",
+    binary: process.env.OMC_HOST_BINARY_128 || process.env.OMC_HOST_BINARY,
+  },
+];
+for (const host of hostMatrix)
+  assert.ok(
+    host.binary,
+    `Exact-package acceptance requires OpenCode ${host.version} (OMC_HOST_BINARY_122 and OMC_HOST_BINARY_128)`,
+  );
+const sourceRoot = fileURLToPath(new URL("..", import.meta.url));
+const browserExecutable =
+  process.env.OMC_BROWSER_EXECUTABLE || chromium.executablePath();
+await stat(browserExecutable);
+const evidenceBase = process.env.OMC_EVIDENCE_PATH
+  ? resolve(process.env.OMC_EVIDENCE_PATH).replace(/\.json$/, "")
+  : null;
 const root = await mkdtemp(join(tmpdir(), "omc-package-acceptance-"));
 const evidence = {
   schemaVersion: 1,
@@ -37,12 +56,15 @@ const evidence = {
   sha256,
   node: process.version,
   platform: process.platform,
+  osRelease: release(),
+  architecture: arch(),
   checks: [],
-  inferenceRequests: 0,
+  realProviderInferenceRequests: 0,
+  mockedProviderRequests: 0,
   publicMetadata: "mocked unavailable; separate live metadata smoke required",
 };
 const env = {
-  PATH: `${dirname(resolve(process.env.OMC_HOST_BINARY))}:${process.env.PATH}`,
+  PATH: `${dirname(resolve(hostMatrix[1].binary))}:${process.env.PATH}`,
   HOME: root,
   TMPDIR: root,
   LANG: "C",
@@ -165,6 +187,111 @@ try {
     code: "ENOENT",
   });
   evidence.checks.push("clean-production-tarball-install");
+  evidence.hostAcceptance = [];
+  for (const host of hostMatrix) {
+    const path = `${evidenceBase || join(root, "surface")}.host-${host.version}.json`;
+    await run(
+      process.execPath,
+      [join(sourceRoot, "scripts/host-acceptance.mjs")],
+      {
+        NODE_OPTIONS: "",
+        OMC_HOST_BINARY: host.binary,
+        OMC_PACKAGE_ROOT: installed,
+        OMC_TARBALL_SHA256: sha256,
+        OMC_EVIDENCE_PATH: path,
+      },
+    );
+    const proof = JSON.parse(await readFile(path, "utf8"));
+    assert.equal(proof.target, "installed-tarball");
+    assert.equal(proof.tarballSha256, sha256);
+    assert.equal(proof.host, host.version);
+    assert.equal(proof.passed, true);
+    assert.equal(proof.scenarios.length, 19);
+    evidence.mockedProviderRequests += proof.requests.length;
+    evidence.hostAcceptance.push({
+      host: proof.host,
+      target: proof.target,
+      tarballSha256: proof.tarballSha256,
+      passed: proof.passed,
+      scenarios: proof.scenarios.length,
+      actualRequests: proof.requests.length,
+    });
+  }
+  evidence.checks.push("installed-tarball-plugin-both-real-hosts");
+  const browserReport = join(root, "browser-report.json"),
+    assetReport = join(root, "browser-assets.json");
+  const browser = start(
+    process.execPath,
+    [
+      "--import",
+      join(sourceRoot, "scripts/browser/environment.mjs"),
+      join(sourceRoot, "node_modules/@playwright/test/cli.js"),
+      "test",
+      "--config",
+      join(sourceRoot, "scripts/browser/playwright.config.mjs"),
+      "--reporter=json",
+    ],
+    {
+      NODE_OPTIONS: "",
+      OMC_PACKAGE_ROOT: installed,
+      OMC_TARBALL_SHA256: sha256,
+      OMC_BROWSER_EXECUTABLE: browserExecutable,
+      OMC_BROWSER_ASSET_EVIDENCE_PATH: assetReport,
+      OMC_BROWSER_OUTPUT_DIR: join(root, "browser-output"),
+      OMC_BROWSER_SCREENSHOT_DIR: join(root, "browser-screenshots"),
+      PLAYWRIGHT_JSON_OUTPUT_FILE: browserReport,
+    },
+  );
+  const browserCode = await new Promise((done, reject) => {
+    browser.child.once("error", reject);
+    browser.child.once("exit", done);
+  });
+  children.delete(browser.child);
+  const report = JSON.parse(await readFile(browserReport, "utf8"));
+  const assets = JSON.parse(
+    await readFile(assetReport, "utf8").catch(() => "{}"),
+  );
+  const browserProof = {
+    schemaVersion: 1,
+    kind: "installed-production-ui-browser",
+    tarballSha256: sha256,
+    node: process.version,
+    platform: process.platform,
+    osRelease: release(),
+    architecture: arch(),
+    passed: browserCode === 0,
+    expected: report.stats.expected,
+    unexpected: report.stats.unexpected,
+    skipped: report.stats.skipped,
+    flaky: report.stats.flaky,
+    assets: assets.assets || [],
+  };
+  if (evidenceBase)
+    await writeFile(
+      `${evidenceBase}.browser.json`,
+      JSON.stringify(browserProof, null, 2) + "\n",
+    );
+  evidence.browserAcceptance = browserProof;
+  assert.equal(
+    browserCode,
+    0,
+    "Installed production UI browser scenarios failed; see redacted browser evidence",
+  );
+  assert.equal(report.stats.expected, 12);
+  assert.equal(report.stats.unexpected, 0);
+  assert.equal(report.stats.skipped, 0);
+  assert.equal(report.stats.flaky, 0);
+  assert.equal(assets.target, "installed-production-dist");
+  assert.equal(assets.tarballSha256, sha256);
+  for (const extension of ["/", ".js", ".css"])
+    assert.ok(
+      assets.assets.some((asset) =>
+        extension === "/" ? asset.path === "/" : asset.path.endsWith(extension),
+      ),
+      `Browser must receive packaged ${extension} assets`,
+    );
+  evidence.checks.push("installed-production-dist-browser-interactions");
+
   const integrate = async (command, commandCli = cli) =>
     JSON.parse(
       await run(process.execPath, [
@@ -258,7 +385,7 @@ try {
     "connection-update-status",
     "config-comment-preserved",
   );
-  const hostBinary = process.env.OMC_HOST_BINARY;
+  const hostBinary = hostMatrix[1].binary;
   assert.ok(
     hostBinary,
     "OMC_HOST_BINARY is required for actual connect/restart/disconnect acceptance",
