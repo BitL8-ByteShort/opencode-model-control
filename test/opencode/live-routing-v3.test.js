@@ -60,6 +60,7 @@ function fixture() {
     client,
     directory: "/isolated",
   });
+  let messageSequence = 0;
   const turn = async (
     agent = "omc-code-worker",
     sessionID = "child",
@@ -67,7 +68,7 @@ function fixture() {
   ) => {
     const output = {
       message: {
-        id: `${sessionID}-message`,
+        id: `${sessionID}-message-${++messageSequence}`,
         agent,
         model: {
           providerID: "opencode",
@@ -469,4 +470,140 @@ test("saved media pins use generic role compatibility before exact request input
     assertExplicitAssignments(f.settings, f.catalog, ["vision-worker"]),
   );
   assert.throws(() => resolveMediaWorker({ ...f, modalities: ["image"] }));
+});
+
+function beginTask(f, callID, agent, child, parent = "parent") {
+  return f.hooks["tool.execute.before"](
+    { tool: "task", sessionID: parent, callID },
+    { args: { subagent_type: agent, ...(child ? { task_id: child } : {}) } },
+  );
+}
+function finishTask(f, callID, child, parent = "parent", background = false) {
+  return f.hooks["tool.execute.after"](
+    { tool: "task", sessionID: parent, callID },
+    {
+      metadata: {
+        sessionId: child,
+        ...(background ? { background: true } : {}),
+      },
+    },
+  );
+}
+async function reviewedWorker(f) {
+  await f.turn("omc-router", "parent");
+  await beginTask(f, "worker", "omc-code-worker");
+  await f.turn();
+  await finishTask(f, "worker", "child");
+  await beginTask(f, "review", "omc-reviewer");
+  await f.turn("omc-reviewer", "review");
+  await finishTask(f, "review", "review");
+}
+
+test("completed repair does not retain A for an unrelated parent's later resumed worker", async () => {
+  const f = fixture();
+  await reviewedWorker(f);
+  await beginTask(f, "repair", "omc-code-worker", "child");
+  const repair = await f.turn();
+  f.settings.roleAssignments["code-worker"] = B;
+  await f.dispatch(repair);
+  await f.dispatch(repair); // Tool-loop inference continuation keeps authorized A.
+  await finishTask(f, "repair", "child");
+  await f.turn("other", "unrelated");
+  await beginTask(f, "ordinary", "omc-code-worker", "child", "unrelated");
+  const next = await f.turn();
+  assert.equal(next.message.model.modelID, "nemotron-3.5-lightning-free");
+  await f.dispatch(next);
+});
+
+test("terminal background repair completion releases retention before a later direct child message", async () => {
+  const f = fixture();
+  await reviewedWorker(f);
+  await beginTask(f, "repair", "omc-code-worker", "child");
+  const repair = await f.turn();
+  await finishTask(f, "repair", "child", "parent", true);
+  f.settings.roleAssignments["code-worker"] = B;
+  await f.dispatch(repair);
+  await f.hooks.event({
+    event: {
+      type: "message.updated",
+      properties: {
+        info: {
+          sessionID: "child",
+          parentID: repair.message.id,
+          role: "assistant",
+          agent: "omc-code-worker",
+          finish: "stop",
+          time: { completed: Date.now() },
+        },
+      },
+    },
+  });
+  const next = await f.turn();
+  assert.equal(next.message.model.modelID, "nemotron-3.5-lightning-free");
+  await f.dispatch(next);
+});
+
+test("review of W1 never turns an independent W2 resume into repair", async () => {
+  for (const consumeRepair of [false, true]) {
+    const f = fixture();
+    await reviewedWorker(f);
+    if (consumeRepair) {
+      await beginTask(f, "repair", "omc-code-worker", "child");
+      await f.turn();
+      await finishTask(f, "repair", "child");
+    }
+    await beginTask(f, "new-worker", "omc-code-worker");
+    await f.turn("omc-code-worker", "second-child");
+    await finishTask(f, "new-worker", "second-child");
+    f.settings.roleAssignments["code-worker"] = B;
+    await beginTask(f, "ordinary", "omc-code-worker", "second-child");
+    const next = await f.turn("omc-code-worker", "second-child");
+    assert.equal(next.message.model.modelID, "nemotron-3.5-lightning-free");
+    await f.dispatch(next, "second-child");
+  }
+});
+
+test("late reviewer completion for W1 cannot authorize repair of replacement W2", async () => {
+  const f = fixture();
+  await f.turn("omc-router", "parent");
+  await beginTask(f, "w1", "omc-code-worker");
+  await f.turn();
+  await finishTask(f, "w1", "child");
+  await beginTask(f, "old-review", "omc-reviewer");
+  const reviewer = await f.turn("omc-reviewer", "review");
+  await finishTask(f, "old-review", "review", "parent", true);
+  await beginTask(f, "w2", "omc-code-worker");
+  await f.turn("omc-code-worker", "second-child");
+  await finishTask(f, "w2", "second-child");
+  await f.hooks.event({
+    event: {
+      type: "message.updated",
+      properties: {
+        info: {
+          sessionID: "review",
+          parentID: reviewer.message.id,
+          role: "assistant",
+          agent: "omc-reviewer",
+          finish: "stop",
+          time: { completed: Date.now() },
+        },
+      },
+    },
+  });
+  f.settings.roleAssignments["code-worker"] = B;
+  await beginTask(f, "ordinary", "omc-code-worker", "second-child");
+  const next = await f.turn("omc-code-worker", "second-child");
+  assert.equal(next.message.model.modelID, "nemotron-3.5-lightning-free");
+  await f.dispatch(next, "second-child");
+});
+
+test("an unrelated next child message consumes no pending repair authorization", async () => {
+  const f = fixture();
+  await reviewedWorker(f);
+  await beginTask(f, "repair", "omc-code-worker", "child");
+  f.settings.roleAssignments["code-worker"] = B;
+  await f.turn("other", "child");
+  const ordinary = await f.turn();
+  assert.equal(ordinary.message.model.modelID, "nemotron-3.5-lightning-free");
+  await f.dispatch(ordinary);
 });

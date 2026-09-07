@@ -317,11 +317,26 @@ export function createMediaRoutingHooks({
       workflow !== operation.workflow
     )
       return;
+    if (operation.repair) {
+      operation.repair.active = false;
+      if (retained.get(childID) === operation.repair) retained.delete(childID);
+    }
     if (operation.agent === "omc-code-worker") {
-      children.set(childID, { parent: operation.parent, id: childRoute.id });
-      workflow.worker = childID;
-    } else if (operation.agent === "omc-reviewer" && workflow.worker)
-      workflow.reviewed = true;
+      const assignment = {
+        parent: operation.parent,
+        childID,
+        id: childRoute.id,
+        messageID: childRoute.messageID,
+      };
+      children.set(childID, assignment);
+      workflow.worker = assignment;
+      workflow.reviewed = null;
+    } else if (
+      operation.agent === "omc-reviewer" &&
+      operation.reviewTarget &&
+      operation.reviewTarget === workflow.worker
+    )
+      workflow.reviewed = operation.reviewTarget;
   }
 
   async function policy() {
@@ -393,6 +408,7 @@ export function createMediaRoutingHooks({
           !info.error
         ) {
           completed.set(info.sessionID, route.messageID);
+          if (route.repair) route.repair.active = false;
           const operation = background.get(info.sessionID);
           if (operation) {
             completeChild(operation, info.sessionID);
@@ -424,11 +440,21 @@ export function createMediaRoutingHooks({
     async "chat.message"(input, output) {
       const agent = output?.message?.agent ?? input?.agent;
       const role = OWNED_ROLES[agent];
+      const repair = retained.get(input.sessionID);
+      retained.delete(input.sessionID);
       if (!role) {
         routes.delete(input.sessionID);
         readOnlySessions.delete(input.sessionID);
         return;
       }
+      // A task hook grants a one-shot repair invocation. Once consumed, only
+      // this exact child message can use it through its inference/tool loop.
+      const authorizedRepair =
+        role === "code-worker" &&
+        repair?.active &&
+        repair.workflow === workflows.get(repair.parent)
+          ? repair
+          : null;
       try {
         const media = mediaModalitiesFromParts(output?.parts);
         const requirements = {
@@ -446,7 +472,7 @@ export function createMediaRoutingHooks({
           current,
           host,
           requirements,
-          retained.get(input.sessionID),
+          authorizedRepair?.id,
         );
         output.message.model = modelReference(selected.id);
         delete output.message.variant;
@@ -462,7 +488,9 @@ export function createMediaRoutingHooks({
         if (output.message.agent === "omc-vision-worker")
           readOnlySessions.add(input.sessionID);
         completed.delete(input.sessionID);
+        if (authorizedRepair) authorizedRepair.messageID = output.message.id;
         routes.set(input.sessionID, {
+          repair: authorizedRepair,
           id: selected.id,
           requirements,
           agent: output.message.agent,
@@ -481,7 +509,7 @@ export function createMediaRoutingHooks({
             if (workflow.parent === input.sessionID) retained.delete(child);
           workflows.set(input.sessionID, {
             worker: null,
-            reviewed: false,
+            reviewed: null,
             repairs: 0,
           });
         }
@@ -510,7 +538,11 @@ export function createMediaRoutingHooks({
         current,
         host,
         route.requirements,
-        retained.get(input.sessionID),
+        route.repair?.active &&
+          route.repair.messageID === input.message.id &&
+          route.repair.workflow === workflows.get(route.repair.parent)
+          ? route.repair.id
+          : undefined,
       );
       const actual = input.model;
       if (
@@ -542,6 +574,10 @@ export function createMediaRoutingHooks({
       if (readOnlySessions.has(input?.sessionID)) output.status = "deny";
     },
     async "tool.execute.before"(input, output) {
+      // Even an unrelated parent's task starts a fresh child invocation; it
+      // cannot consume a pending retention grant from another task call.
+      if (input.tool === "task" && typeof output?.args?.task_id === "string")
+        retained.delete(output.args.task_id);
       if (readOnlySessions.has(input?.sessionID))
         throw new MediaRoutingError(
           "OMC_MEDIA_TOOLS_BLOCKED",
@@ -571,30 +607,44 @@ export function createMediaRoutingHooks({
         fail("OMC_DELEGATION_DISABLED");
       const workflow = workflows.get(input.sessionID);
       if (!workflow) fail("OMC_WORKFLOW_UNAVAILABLE");
+      const operation = {
+        parent: input.sessionID,
+        agent: args.subagent_type,
+        workflow,
+        reviewTarget:
+          args.subagent_type === "omc-reviewer" ? workflow.worker : null,
+        repair: null,
+      };
       if (args.subagent_type === "omc-code-worker" && args.task_id) {
         const child = children.get(args.task_id);
         if (
           workflow.reviewed &&
-          workflow.worker === args.task_id &&
+          workflow.reviewed === workflow.worker &&
+          workflow.worker === child &&
+          child?.childID === args.task_id &&
           child?.parent === input.sessionID
         ) {
           if (workflow.repairs >= current.settings.maxFallbacksPerAssignment)
             fail("OMC_REPAIR_LIMIT");
-          retained.set(args.task_id, child.id);
           select(
             current,
             await inventory(),
             { role: "code-worker", modalities: ["text"], access: "write" },
             child.id,
           );
+          operation.repair = {
+            id: child.id,
+            parent: input.sessionID,
+            workflow,
+            active: true,
+            messageID: null,
+          };
+          retained.set(args.task_id, operation.repair);
           workflow.repairs++;
-        } else retained.delete(args.task_id);
+          workflow.reviewed = null;
+        }
       }
-      pending.set(`${input.sessionID}/${input.callID}`, {
-        parent: input.sessionID,
-        agent: args.subagent_type,
-        workflow,
-      });
+      pending.set(`${input.sessionID}/${input.callID}`, operation);
     },
     async "tool.execute.after"(input, output) {
       const key = `${input.sessionID}/${input.callID}`,
