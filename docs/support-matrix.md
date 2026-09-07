@@ -1,10 +1,10 @@
 # Support matrix
 
-This matrix describes implemented 0.3.0 behavior and dated compatibility evidence. Source versions, candidate CI, and final public artifacts are separate claims. See [Releasing](releasing.md) for the final-byte gates and the [release index](https://github.com/BitL8-ByteShort/opencode-model-control/releases) for published versions.
+This matrix describes implemented 0.3.0 behavior and dated compatibility evidence. Source verification, final installed-artifact acceptance, and public-channel verification are separate claims. See [Releasing](releasing.md) for the final-byte gates and the [release index](https://github.com/BitL8-ByteShort/opencode-model-control/releases) for published versions.
 
 ## Platform and artifact evidence
 
-Corrected [CI run 34135803892](https://github.com/BitL8-ByteShort/opencode-model-control/actions/runs/34135803892) passed the installed-artifact matrix on 2026-09-07 at source commit `0e2ea30`. Every job consumed the same candidate tarball, SHA-256 `f709991f6da74da2730cecc525cb7e1d188fd482ac29a42e2b9b0a0588b5a2f8`. This was 0.3.0 candidate code still carrying package version **0.2.1**, not final 0.3.0 bytes or the historical public 0.2.1 artifact. Initial CI run 34134319692 predates the installed-artifact correction and is not this proof.
+Final [CI run 34146977662](https://github.com/BitL8-ByteShort/opencode-model-control/actions/runs/34146977662) passed all seven jobs on 2026-09-07 at source commit [`bcd228a349627523382dda65017bab6fb0a4856c`](https://github.com/BitL8-ByteShort/opencode-model-control/commit/bcd228a349627523382dda65017bab6fb0a4856c). The final 0.3.0 tarball was built once from that clean protected-main commit, and every installed-artifact job consumed the same bytes: SHA-256 `26a532b44c96d643c0543a78d2fef1ab2c1a3b83886e6715cef0ab683d3413ab`.
 
 | OS/kernel | Architecture | Node versions executed | OpenCode versions executed |
 | --- | --- | --- | --- |
@@ -13,21 +13,25 @@ Corrected [CI run 34135803892](https://github.com/BitL8-ByteShort/opencode-model
 
 Each OS/Node job passed all 16 package checks, both real-host matrices (19 scenarios and 56 loopback provider requests per host), and all 12 interactions with the installed production UI, with zero failures, skips or flakes. Evidence binds host execution to the installed core/service/plugin and browser execution to the packaged HTML/JS/CSS hashes. The package flow also checks production startup without Vite, current install, actual prior-0.2.1 upgrade, private v3 migration, MCP, token rotation, read-only rejection, Connect/Disconnect and config restoration. Intentionally broken plugin/UI tarballs were rejected while healthy checkout source remained present.
 
-These were **112 synthetic loopback provider requests per package run and zero real-provider inference requests**. Public Models.dev metadata smoke is separately labeled and makes no inference/quality claim. Linux source verification also passed on both Node versions; source tests alone do not establish installed-package behavior.
+These were **112 synthetic loopback provider requests per package run and zero real-provider inference requests**. Public Models.dev metadata smoke is separately labeled and makes no inference/quality claim. Linux source verification also passed all 293 tests, typecheck and build on both Node versions; source tests alone do not establish installed-package behavior.
 
-No final 0.3.0 digest is asserted by this dated candidate record. After the version/docs commit and protected-main merge, release acceptance must execute on the one final tarball before publication, and both downloaded public artifacts must match it. Final evidence belongs with the release assets; a prior candidate pass must never be relabeled as final-byte proof.
+The [immutable GitHub release](https://github.com/BitL8-ByteShort/opencode-model-control/releases/tag/v0.3.0) contains [final matrix evidence](https://github.com/BitL8-ByteShort/opencode-model-control/releases/download/v0.3.0/acceptance-evidence.zip) and [public npm verification](https://github.com/BitL8-ByteShort/opencode-model-control/releases/download/v0.3.0/npm-public-verification.zip). On 2026-09-07, credential-free npm and GitHub downloads matched the final SHA-256 above; npm registry SHA-512 integrity also matched.
+
+Each downloaded tarball passed all 16 package checks, both OpenCode hosts (19 scenarios and 56 loopback requests each), and all 12 production browser interactions with zero failures, skips or flakes. Each public-channel run used Linux x64 kernel 6.8.0-138-generic and Node 22.12.0, separately from the final CI matrix above, with 112 synthetic loopback requests and zero real-provider inference requests.
+
+A clean version-pinned npm name install reported CLI 0.3.0 and all 74 package files matched the public tarball. Exact download links and checksums are in the [package ledger](../packages/README.md); the [public verification receipt](https://github.com/BitL8-ByteShort/opencode-model-control/issues/12#issuecomment-5574166395) records both channels and issue closure.
 
 | Surface | Status | Boundary |
 | --- | --- | --- |
 | Node.js `>=22.12.0` | Package engine contract | The exact 22.12.0 minimum and 24.20.0 were executed above; other versions are not individually proven. |
-| Linux x64 / macOS arm64 | Candidate artifact verified | Only the recorded OS/kernel/runtime matrix is proven; this is not every distribution or architecture. |
-| OpenCode 1.18.22 / 1.18.28 | Actual candidate dispatch verified | All owned roles, both media lanes, ordinary task/background resumes, retained repair/revocation, missing host models, endpoint conflicts, unrelated agents and owned slash summaries. |
+| Linux x64 / macOS arm64 | Final 0.3.0 artifact verified | Only the recorded OS/kernel/runtime matrix is proven; this is not every distribution or architecture. |
+| OpenCode 1.18.22 / 1.18.28 | Actual final-artifact dispatch verified | All owned roles, both media lanes, ordinary task/background resumes, retained repair/revocation, missing host models, endpoint conflicts, unrelated agents and owned slash summaries. |
 | Other OpenCode versions/configuration majors | Unverified | Require explicit compatibility acceptance. |
 | OpenCode TUI/server host | Tested through actual host APIs/events | Managed agents require a fresh host after initial Connect or a managed-surface update. |
 | Headless HTTP-only callers | Limited error guidance | Missing-host errors may be generic `UnknownError`; consume the same-directory instance event stream for the reload toast text. |
 | OpenCode desktop | Unverified separately | CLI/server evidence does not prove desktop application behavior. |
 | WSL / native Windows / other architectures | Unverified | No new platform support claim is made. |
-| npm / GitHub final 0.3.0 artifacts | Separate publication gate | Consult the actual public channels and their final artifact evidence; candidate CI is not publication. |
+| npm / GitHub final 0.3.0 artifacts | Public downloads and installed acceptance verified | Both downloaded tarballs match the final SHA-256 and passed the separate Linux/Node 22.12.0 acceptance described above; GitHub release is immutable. |
 
 ## Implemented behavior
 
