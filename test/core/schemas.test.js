@@ -18,7 +18,7 @@ function readJson(relativePath) {
 
 test("benchmark contracts are strict versioned JSON Schemas", () => {
   const expectedVersions = new Map([
-    ["router-settings.schema.json", 2],
+    ["router-settings.schema.json", 3],
     ["model-catalog.schema.json", 2],
   ]);
   for (const file of SCHEMA_FILES) {

@@ -1,3 +1,4 @@
+import {publicMetadataFetch,liveModel} from "../fixtures/public-metadata.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
@@ -16,7 +17,7 @@ function liveDiscovery() {
     error: null,
     availableIds: catalog.models.map(({ id }) => id),
     models: catalog.models.map((model) => ({
-      id: model.id,
+      ...liveModel(model.id,{inputModalities:model.modalities.input,outputModalities:model.modalities.output}),
       status: "active",
       free: true,
       inputCostVerified: true,
@@ -29,7 +30,7 @@ function liveDiscovery() {
 async function isolatedService(t, discovery) {
   const directory = await mkdtemp(join(tmpdir(), "omc-service-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
-  return new ControlService({
+  return new ControlService({ metadataFetch:publicMetadataFetch,
     settingsPath: join(directory, "settings.json"),
     discovery,
   }).initialize();
@@ -38,7 +39,7 @@ async function isolatedService(t, discovery) {
 async function isolatedUsageService(t, usageReader) {
   const directory = await mkdtemp(join(tmpdir(), "omc-service-usage-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
-  return new ControlService({
+  return new ControlService({ metadataFetch:publicMetadataFetch,
     settingsPath: join(directory, "settings.json"),
     discovery: liveDiscovery(),
     usageReader,
@@ -83,14 +84,14 @@ test("live zero-cost catalog produces a bounded explainable route", async (t) =>
   assert.equal(result.integrationWarning, null);
 });
 
-test("disabling an assigned model atomically degrades its role to auto", async (t) => {
+test("disabling an assigned model preserves its requested pin", async (t) => {
   const service = await isolatedService(t, liveDiscovery());
   const next = structuredClone(service.getState().settings);
-  next.modelControls["opencode/big-pickle"].enabled = false;
+  next.modelControls["opencode/big-pickle"].selection = "disabled";
 
-  const state = await service.updateSettings(next);
-  assert.equal(state.settings.roleAssignments.orchestrator, "auto");
-  assert.equal(state.settings.modelControls["opencode/big-pickle"].enabled, false);
+  const state = await service.updateSettings(next, {expectedSettingsRevision:service.getState().settingsRevision});
+  assert.equal(state.settings.roleAssignments.orchestrator, "opencode/big-pickle");
+  assert.equal(state.settings.modelControls["opencode/big-pickle"].selection, "disabled");
 });
 
 test("non-text route previews state the installed plugin boundary", async (t) => {
@@ -153,7 +154,7 @@ test("connecting persists the validated plugin policy even when defaults were un
   t.after(() => rm(directory, { recursive: true, force: true }));
   const settingsPath = join(directory, "settings.json");
   let receivedSettings;
-  const service = await new ControlService({
+  const service = await new ControlService({ metadataFetch:publicMetadataFetch,
     settingsPath,
     discovery: liveDiscovery(),
     integrationInstaller: {
@@ -212,25 +213,26 @@ test("a complete catalog snapshot preserves enabled plugin models across a parti
     };
   };
 
-  const first = await new ControlService({ settingsPath, discovery: completeDiscovery }).initialize();
+  const first = await new ControlService({ metadataFetch:publicMetadataFetch, settingsPath, discovery: completeDiscovery }).initialize();
   const settings = structuredClone(first.getState().settings);
   settings.costPreference = "paid-first";
   settings.costPolicy = "known-cost";
-  settings.modelControls[pluginModel.id].enabled = true;
+  settings.modelControls[pluginModel.id] = {selection:"enabled"};
   settings.roleAssignments["code-worker"] = pluginModel.id;
-  await first.updateSettings(settings);
+  await first.updateSettings(settings, {expectedSettingsRevision:first.getState().settingsRevision});
 
   assert.equal((await stat(snapshotPath)).mode & 0o777, 0o600);
-  const second = await new ControlService({ settingsPath, discovery: incompleteDiscovery }).initialize();
+  const second = await new ControlService({ metadataFetch:publicMetadataFetch, settingsPath, discovery: incompleteDiscovery }).initialize();
+  await second.refreshCatalog();
   let state = second.getState();
   assert.equal(state.system.catalog.complete, false);
   assert.equal(state.catalog.find(({ id }) => id === pluginModel.id)?.available, true);
-  assert.equal(state.settings.modelControls[pluginModel.id].enabled, true);
+  assert.equal(state.settings.modelControls[pluginModel.id].selection, "enabled");
   assert.equal(state.settings.roleAssignments["code-worker"], pluginModel.id);
 
   state = await second.refreshCatalog();
   assert.equal(state.catalog.find(({ id }) => id === pluginModel.id)?.available, true);
   const stored = JSON.parse(await readFile(settingsPath, "utf8"));
-  assert.equal(stored.modelControls[pluginModel.id].enabled, true);
+  assert.equal(stored.modelControls[pluginModel.id].selection, "enabled");
   assert.equal(stored.roleAssignments["code-worker"], pluginModel.id);
 });

@@ -99,6 +99,7 @@ test("strict free-only eligibility excludes unverified, disabled, unavailable, a
 
   const catalog = validateCatalog(raw);
   const settings = createDefaultSettings(catalog);
+  settings.modelControls["opencode/muse-spark-1.2-contributor-free"]={selection:"disabled"};
   const codeModels = eligibleModelsForRole({
     catalog,
     settings,
@@ -336,6 +337,7 @@ test("known-paid role eligibility is provider-agnostic and still requires explic
   settings.costPolicy = "known-cost";
   settings.costPreference = "paid-first";
 
+  settings.autoIncludeNewModels=false;
   const codeBeforeOptIn = eligibleModelsForRole({
     catalog,
     settings,

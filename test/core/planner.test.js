@@ -144,6 +144,7 @@ test("a compatible provisional model is used only after explicit enablement", ()
   const settings = createDefaultSettings(catalog);
   settings.roleAssignments["vision-worker"] = "auto";
   settings.modelControls["opencode/mimo-v2.5-free"].available = false;
+  settings.modelControls["opencode/muse-spark-1.2-contributor-free"]={selection:"disabled"};
 
   assert.throws(
     () =>

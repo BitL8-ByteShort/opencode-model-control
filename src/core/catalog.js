@@ -385,12 +385,19 @@ export function eligibleModelsForRole({
         pricingClass !== "unknown" &&
         (costPolicy === "known-cost" || pricingClass === "free") &&
         model.available === true &&
-        control?.enabled === true &&
-        control?.available === true &&
+        modelEnabled(settings, model.id) &&
+        control?.available !== false &&
         modelSupports({ model, role, modalities, access })
       );
     })
     .sort((left, right) =>
       compareEligibleModels(left, right, role, costPreference),
     );
+}
+
+// Intent is independent of runtime eligibility; missing identities follow policy.
+export function modelEnabled(settings, modelId) {
+  const control = settings?.modelControls?.[modelId];
+  const selection = typeof control?.enabled === "boolean" ? (control.enabled ? "enabled" : "disabled") : control?.selection ?? "policy";
+  return selection === "enabled" || (selection === "policy" && settings?.autoIncludeNewModels !== false);
 }

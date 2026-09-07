@@ -7,6 +7,7 @@ import {
   createDefaultSettings,
   migrateSettings,
   validateSettings,
+  assertExplicitAssignments,
 } from "../../src/core/index.js";
 
 test("default settings are strict, bounded, complete, and deterministic", () => {
@@ -15,7 +16,7 @@ test("default settings are strict, bounded, complete, and deterministic", () => 
 
   assert.deepEqual(settings, createDefaultSettings(catalog));
   assert.equal(DEFAULT_SETTINGS.roleAssignments.orchestrator, "auto");
-  assert.equal(settings.schemaVersion, 2);
+  assert.equal(settings.schemaVersion, 3);
   assert.equal(settings.costPreference, "free-first");
   assert.equal(settings.costPolicy, "free-only");
   assert.equal(Object.hasOwn(settings, "freeOnly"), false);
@@ -30,12 +31,12 @@ test("default settings are strict, bounded, complete, and deterministic", () => 
   assert.equal(settings.makeRouterDefault, true);
   assert.equal(Object.keys(settings.modelControls).length, 6);
   assert.equal(
-    settings.modelControls["opencode/muse-spark-1.2-contributor-free"].enabled,
-    false,
+    settings.modelControls["opencode/muse-spark-1.2-contributor-free"].selection,
+    "policy",
   );
 });
 
-test("legacy settings migrate to schema v2 without enabling unselected models", () => {
+test("legacy settings migrate to schema v3 without enabling unselected models", () => {
   const catalog = loadModelCatalog();
   const migrated = migrateSettings(
     {
@@ -50,7 +51,7 @@ test("legacy settings migrate to schema v2 without enabling unselected models", 
     catalog,
   );
 
-  assert.equal(migrated.schemaVersion, 2);
+  assert.equal(migrated.schemaVersion, 3);
   assert.equal(migrated.costPreference, "free-first");
   assert.equal(migrated.costPolicy, "free-only");
   assert.equal(
@@ -58,20 +59,20 @@ test("legacy settings migrate to schema v2 without enabling unselected models", 
     "opencode/big-pickle",
   );
   assert.equal(
-    migrated.modelControls["opencode/big-pickle"].enabled,
-    true,
+    migrated.modelControls["opencode/big-pickle"].selection,
+    "enabled",
   );
   assert.equal(
     migrated.modelControls["opencode/mimo-v2.5-free"].available,
     false,
   );
   assert.equal(
-    migrated.modelControls["opencode/nemotron-3.5-lightning-free"].enabled,
-    false,
+    migrated.modelControls["opencode/nemotron-3.5-lightning-free"].selection,
+    "disabled",
   );
 });
 
-test("schema v1 free-only settings migrate to explicit v2 cost controls", () => {
+test("schema v1 free-only settings migrate to explicit v3 cost controls", () => {
   const catalog = loadModelCatalog();
   const legacy = {
     ...createDefaultSettings(catalog),
@@ -82,7 +83,7 @@ test("schema v1 free-only settings migrate to explicit v2 cost controls", () => 
   delete legacy.costPolicy;
 
   const migrated = migrateSettings(legacy, catalog);
-  assert.equal(migrated.schemaVersion, 2);
+  assert.equal(migrated.schemaVersion, 3);
   assert.equal(migrated.costPreference, "free-first");
   assert.equal(migrated.costPolicy, "free-only");
 });
@@ -124,7 +125,7 @@ test("settings reject malformed costs, excessive repair passes, recursion, and u
           ...base,
           modelControls: {
             ...base.modelControls,
-            "unknown/free-model": { enabled: true, available: true },
+            "invalid identity": { enabled: true, available: true },
           },
         },
         catalog,
@@ -173,7 +174,7 @@ test("known-cost settings permit an explicit paid model from the active catalog"
   assert.equal(settings.costPolicy, "known-cost");
 });
 
-test("explicit paid and free assignments reject a zero role score", () => {
+test("live assignment validation rejects a zero role score", () => {
   const catalog = structuredClone(loadModelCatalog());
   const free = structuredClone(catalog.models[1]);
   free.id = "provider/zero-score-free";
@@ -194,7 +195,7 @@ test("explicit paid and free assignments reject a zero role score", () => {
   ]) {
     assert.throws(
       () =>
-        validateSettings(
+        validateLiveSettings(
           {
             ...base,
             costPreference,
@@ -234,7 +235,7 @@ test("explicit role assignments must remain enabled, available, verified-free, a
 
   assert.throws(
     () =>
-      validateSettings(
+      validateLiveSettings(
         {
           ...base,
           roleAssignments: {
@@ -256,7 +257,7 @@ test("explicit role assignments must remain enabled, available, verified-free, a
 
   assert.throws(
     () =>
-      validateSettings(
+      validateLiveSettings(
         {
           ...base,
           roleAssignments: {
@@ -273,7 +274,7 @@ test("explicit role assignments must remain enabled, available, verified-free, a
   unavailable.roleAssignments.reviewer = "opencode/nemotron-3-ultra-free";
   unavailable.modelControls["opencode/nemotron-3-ultra-free"].available = false;
   assert.throws(
-    () => validateSettings(unavailable, catalog),
+    () => validateLiveSettings(unavailable, catalog),
     (error) => error.code === "INVALID_ROLE_ASSIGNMENT",
   );
 
@@ -284,7 +285,7 @@ test("explicit role assignments must remain enabled, available, verified-free, a
   const unverified = structuredClone(base);
   unverified.roleAssignments.reviewer = "opencode/nemotron-3-ultra-free";
   assert.throws(
-    () => validateSettings(unverified, unverifiedCatalog),
+    () => validateLiveSettings(unverified, unverifiedCatalog),
     (error) => error.code === "INVALID_ROLE_ASSIGNMENT",
   );
 });
@@ -307,3 +308,5 @@ test("settings reject null assignments and malformed model controls", () => {
     (error) => error.code === "INVALID_SETTINGS",
   );
 });
+
+function validateLiveSettings(input,catalog) { const settings=validateSettings(input,catalog);assertExplicitAssignments(settings,catalog);return settings; }

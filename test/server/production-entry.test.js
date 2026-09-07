@@ -93,6 +93,7 @@ test("normal CLI ignores NODE_ENV=development and never imports Vite", async (t)
     process.execPath,
     [
       `--experimental-loader=${pathToFileURL(loaderPath).href}`,
+      "--import",new URL("../fixtures/offline-public-fetch.js",import.meta.url).href,
       CLI_ENTRY,
       "--no-open",
     ],

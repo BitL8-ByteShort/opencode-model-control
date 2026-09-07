@@ -54,7 +54,7 @@ export const ROLE_REQUIREMENTS = Object.freeze({
   reviewer: Object.freeze({ modalities: Object.freeze(["text"]), access: "read" }),
 });
 
-export const CURRENT_SETTINGS_VERSION = 2;
+export const CURRENT_SETTINGS_VERSION = 3;
 export const CURRENT_CATALOG_VERSION = 2;
 export const CURRENT_PLAN_VERSION = 1;
 export const CURRENT_RESULT_VERSION = 1;

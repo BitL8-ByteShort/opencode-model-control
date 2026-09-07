@@ -27,43 +27,47 @@ function invalidSettings(message, code = "INVALID_SETTINGS") {
   throw routerError(code, message);
 }
 
-function normalizeModelControls(value, catalog) {
-  if (value !== undefined && !isPlainObject(value)) {
-    invalidSettings("modelControls must be an object.");
-  }
-  const supplied = value ?? {};
-  const catalogIds = new Set(catalog.models.map((model) => model.id));
-  for (const modelId of Object.keys(supplied)) {
-    if (!catalogIds.has(modelId)) {
-      invalidSettings("Settings contain an unknown model.", "UNKNOWN_MODEL");
-    }
-  }
+const MODEL_ID_PATTERN = /^[a-z0-9][a-z0-9._-]*\/[a-z0-9@~][a-z0-9._:+/@~-]*$/i;
 
+function normalizeModelControls(value) {
+  if (value !== undefined && !isPlainObject(value))
+    invalidSettings("modelControls must be an object.");
   return Object.fromEntries(
-    catalog.models.map((model) => {
-      const control = supplied[model.id];
-      if (control !== undefined && !isPlainObject(control)) {
-        invalidSettings(`Model control for ${model.id} is invalid.`);
+    Object.entries(value ?? {}).map(([id, control]) => {
+      if (id.length > 512 || !MODEL_ID_PATTERN.test(id))
+        invalidSettings("Invalid model identity.", "UNKNOWN_MODEL");
+      if (
+        !isPlainObject(control) ||
+        Object.keys(control).some(
+          (key) => !["selection", "enabled", "available"].includes(key),
+        )
+      )
+        invalidSettings("Invalid model control.");
+      for (const key of ["enabled", "available"]) {
+        if (Object.hasOwn(control, key) && typeof control[key] !== "boolean")
+          invalidSettings("Invalid model control flag.");
       }
-      if (control !== undefined) {
-        for (const key of Object.keys(control)) {
-          if (key !== "enabled" && key !== "available") {
-            invalidSettings(`Model control for ${model.id} has an unknown field.`);
-          }
-        }
-        for (const key of ["enabled", "available"]) {
-          if (Object.hasOwn(control, key) && typeof control[key] !== "boolean") {
-            invalidSettings(`Model control for ${model.id} has an invalid ${key} value.`);
-          }
-        }
-      }
-      const enabled =
-        typeof control?.enabled === "boolean"
+      if (
+        control.selection !== undefined &&
+        !["policy", "enabled", "disabled"].includes(control.selection)
+      )
+        invalidSettings("Invalid model selection.");
+      // Boolean inputs are accepted for older clients, and become explicit intent.
+      const selection =
+        typeof control.enabled === "boolean"
           ? control.enabled
-          : model.enabledByDefault;
-      const available =
-        typeof control?.available === "boolean" ? control.available : model.available;
-      return [model.id, { enabled, available }];
+            ? "enabled"
+            : "disabled"
+          : (control.selection ?? "policy");
+      return [
+        id,
+        {
+          selection,
+          ...(control.available !== undefined
+            ? { available: control.available }
+            : {}),
+        },
+      ];
     }),
   );
 }
@@ -89,9 +93,9 @@ function normalizeRoleAssignments(value, catalog) {
   }
   const supplied = value ?? {};
   const defaults = defaultRoleAssignmentsForCatalog(catalog);
-  const catalogIds = new Set(catalog.models.map((model) => model.id));
   for (const role of Object.keys(supplied)) {
-    if (!MODEL_ROLES.includes(role)) invalidSettings("Settings contain an unknown role.");
+    if (!MODEL_ROLES.includes(role))
+      invalidSettings("Settings contain an unknown role.");
   }
 
   return Object.fromEntries(
@@ -104,17 +108,24 @@ function normalizeRoleAssignments(value, catalog) {
       }
       if (
         assignment !== AUTO_ASSIGNMENT &&
-        !catalogIds.has(assignment)
+        (assignment.length > 512 || !MODEL_ID_PATTERN.test(assignment))
       ) {
-        invalidSettings(`Role assignment for ${role} is invalid.`, "UNKNOWN_MODEL");
+        invalidSettings(
+          `Role assignment for ${role} is invalid.`,
+          "UNKNOWN_MODEL",
+        );
       }
       return [role, assignment];
     }),
   );
 }
 
-function assertExplicitAssignments(settings, catalog) {
-  for (const role of MODEL_ROLES) {
+export function assertExplicitAssignments(
+  settings,
+  catalog,
+  roles = MODEL_ROLES,
+) {
+  for (const role of roles) {
     const modelId = settings.roleAssignments[role];
     if (modelId === AUTO_ASSIGNMENT) continue;
     const requirement = ROLE_REQUIREMENTS[role];
@@ -136,7 +147,10 @@ function assertExplicitAssignments(settings, catalog) {
 
 export function validateSettings(value, catalog = loadModelCatalog()) {
   const normalizedCatalog = validateCatalog(catalog);
-  if (!isPlainObject(value) || value.schemaVersion !== CURRENT_SETTINGS_VERSION) {
+  if (
+    !isPlainObject(value) ||
+    value.schemaVersion !== CURRENT_SETTINGS_VERSION
+  ) {
     invalidSettings("Settings schema version is unsupported.");
   }
   if (!COST_PREFERENCES.includes(value.costPreference)) {
@@ -166,8 +180,14 @@ export function validateSettings(value, catalog = loadModelCatalog()) {
     invalidSettings("makeRouterDefault must be true or false.");
   }
 
+  if (
+    value.autoIncludeNewModels !== undefined &&
+    typeof value.autoIncludeNewModels !== "boolean"
+  )
+    invalidSettings("autoIncludeNewModels must be true or false.");
   const settings = {
     schemaVersion: CURRENT_SETTINGS_VERSION,
+    autoIncludeNewModels: value.autoIncludeNewModels ?? true,
     costPreference: value.costPreference,
     costPolicy: value.costPolicy,
     roleAssignments: normalizeRoleAssignments(
@@ -177,9 +197,11 @@ export function validateSettings(value, catalog = loadModelCatalog()) {
     maxDelegationDepth: value.maxDelegationDepth,
     maxFallbacksPerAssignment: value.maxFallbacksPerAssignment,
     makeRouterDefault: value.makeRouterDefault ?? true,
-    modelControls: normalizeModelControls(value.modelControls, normalizedCatalog),
+    modelControls: normalizeModelControls(
+      value.modelControls,
+      normalizedCatalog,
+    ),
   };
-  assertExplicitAssignments(settings, normalizedCatalog);
   return settings;
 }
 
@@ -193,13 +215,11 @@ export function createDefaultSettings(catalog = loadModelCatalog()) {
     maxDelegationDepth: 1,
     maxFallbacksPerAssignment: 1,
     makeRouterDefault: true,
+    autoIncludeNewModels: true,
     modelControls: Object.fromEntries(
       normalizedCatalog.models.map((model) => [
         model.id,
-        {
-          enabled: model.enabledByDefault,
-          available: model.available,
-        },
+        { selection: "policy" },
       ]),
     ),
   };
@@ -226,17 +246,21 @@ export function createDefaultSettings(catalog = loadModelCatalog()) {
 function legacyRoleAssignments(value, catalog) {
   const assignments = defaultRoleAssignmentsForCatalog(catalog);
   const explicit = new Set();
-  const primary = value.primary ?? value.orchestratorModel ?? value.primaryModel;
+  const primary =
+    value.primary ?? value.orchestratorModel ?? value.primaryModel;
   if (typeof primary === "string") {
     assignments.orchestrator = primary;
     explicit.add("orchestrator");
   }
-  const current = isPlainObject(value.roleAssignments) ? value.roleAssignments : {};
+  const current = isPlainObject(value.roleAssignments)
+    ? value.roleAssignments
+    : {};
   const legacy = isPlainObject(value.roles) ? value.roles : {};
   const candidates = {
     orchestrator: current.orchestrator,
     "code-worker": current["code-worker"] ?? current.codeWorker ?? legacy.code,
-    "vision-worker": current["vision-worker"] ?? current.visionWorker ?? legacy.vision,
+    "vision-worker":
+      current["vision-worker"] ?? current.visionWorker ?? legacy.vision,
     reviewer: current.reviewer ?? legacy.review,
   };
   for (const [role, assignment] of Object.entries(candidates)) {
@@ -250,7 +274,8 @@ function legacyRoleAssignments(value, catalog) {
 
 export function migrateSettings(value, catalog = loadModelCatalog()) {
   const normalizedCatalog = validateCatalog(catalog);
-  if (value === undefined || value === null) return createDefaultSettings(normalizedCatalog);
+  if (value === undefined || value === null)
+    return createDefaultSettings(normalizedCatalog);
   if (!isPlainObject(value)) invalidSettings("Settings must be an object.");
 
   if (value.schemaVersion === CURRENT_SETTINGS_VERSION) {
@@ -259,7 +284,8 @@ export function migrateSettings(value, catalog = loadModelCatalog()) {
   if (
     value.schemaVersion !== undefined &&
     value.schemaVersion !== 0 &&
-    value.schemaVersion !== 1
+    value.schemaVersion !== 1 &&
+    value.schemaVersion !== 2
   ) {
     invalidSettings(
       "Settings were created by an unsupported future version.",
@@ -272,69 +298,41 @@ export function migrateSettings(value, catalog = loadModelCatalog()) {
     );
   }
 
-  const defaults = createDefaultSettings(normalizedCatalog);
-  const { assignments, explicit } = legacyRoleAssignments(value, normalizedCatalog);
+  const { assignments } = legacyRoleAssignments(value, normalizedCatalog);
+  const controls = { ...(value.modelControls ?? {}) };
   const enabledSet = Array.isArray(value.enabledModels)
     ? new Set(value.enabledModels)
     : null;
-  const unavailableSet = new Set(
-    Array.isArray(value.unavailableModels) ? value.unavailableModels : [],
-  );
-  const catalogIds = new Set(normalizedCatalog.models.map((model) => model.id));
-  for (const modelId of [...(enabledSet ?? []), ...unavailableSet]) {
-    if (!catalogIds.has(modelId)) {
-      invalidSettings("Legacy settings contain an unknown model.", "UNKNOWN_MODEL");
+  const unavailable = new Set(value.unavailableModels ?? []);
+  if (enabledSet) {
+    for (const id of new Set([
+      ...normalizedCatalog.models.map((model) => model.id),
+      ...enabledSet,
+    ])) {
+      controls[id] = {
+        ...controls[id],
+        enabled: controls[id]?.enabled ?? enabledSet.has(id),
+      };
     }
   }
-
-  const controls = Object.fromEntries(
-    normalizedCatalog.models.map((model) => {
-      const current = isPlainObject(value.modelControls?.[model.id])
-        ? value.modelControls[model.id]
-        : {};
-      return [
-        model.id,
-        {
-          enabled:
-            typeof current.enabled === "boolean"
-              ? current.enabled
-              : enabledSet
-                ? enabledSet.has(model.id)
-                : defaults.modelControls[model.id].enabled,
-          available:
-            typeof current.available === "boolean"
-              ? current.available
-              : !unavailableSet.has(model.id) &&
-                defaults.modelControls[model.id].available,
-        },
-      ];
-    }),
-  );
-
-  for (const role of MODEL_ROLES) {
-    const modelId = assignments[role];
-    const control = controls[modelId];
-    if (
-      !explicit.has(role) &&
-      modelId !== AUTO_ASSIGNMENT &&
-      (!control || !control.enabled || !control.available)
-    ) {
-      assignments[role] = AUTO_ASSIGNMENT;
-    }
-  }
+  for (const id of unavailable)
+    controls[id] = { ...controls[id], available: false };
 
   return validateSettings(
     {
       schemaVersion: CURRENT_SETTINGS_VERSION,
-      costPreference: DEFAULT_COST_PREFERENCE,
-      costPolicy: DEFAULT_COST_POLICY,
+      costPreference: value.costPreference ?? DEFAULT_COST_PREFERENCE,
+      costPolicy: value.costPolicy ?? DEFAULT_COST_POLICY,
+      autoIncludeNewModels: true,
       roleAssignments: assignments,
-      maxDelegationDepth:
-        Number.isInteger(value.maxDelegationDepth) ? value.maxDelegationDepth : 1,
-      maxFallbacksPerAssignment:
-        Number.isInteger(value.maxFallbacksPerAssignment)
-          ? value.maxFallbacksPerAssignment
-          : 1,
+      maxDelegationDepth: Number.isInteger(value.maxDelegationDepth)
+        ? value.maxDelegationDepth
+        : 1,
+      maxFallbacksPerAssignment: Number.isInteger(
+        value.maxFallbacksPerAssignment,
+      )
+        ? value.maxFallbacksPerAssignment
+        : 1,
       makeRouterDefault:
         typeof value.makeRouterDefault === "boolean"
           ? value.makeRouterDefault

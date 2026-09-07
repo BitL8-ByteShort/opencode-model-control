@@ -1,3 +1,4 @@
+import {spawn} from "node:child_process";
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -19,7 +20,7 @@ test("the exact installed MCP command completes a stdio handshake", async (conte
   context.after(() => rm(root, { recursive: true, force: true }));
   const transport = new StdioClientTransport({
     command: process.execPath,
-    args: [cliPath, "mcp"],
+    args: ["--import", new URL("../fixtures/offline-public-fetch.js",import.meta.url).href, cliPath, "mcp"],
     cwd: root,
     env: {
       HOME: root,
@@ -45,7 +46,7 @@ test("the exact installed MCP command completes a stdio handshake", async (conte
 
 test("the installer preflight verifies the exact configured MCP command", async () => {
   assert.deepEqual(
-    await verifyMcpCommand({ command: [process.execPath, cliPath, "mcp"] }),
+    await verifyMcpCommand({ command: [process.execPath, cliPath, "mcp"], spawn:(command,args,options)=>spawn(command,["--import",new URL("../fixtures/offline-public-fetch.js",import.meta.url).href,...args],options) }),
     { verified: true },
   );
 });

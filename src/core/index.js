@@ -20,6 +20,7 @@ export {
   loadModelCatalog,
   mergeLiveAvailability,
   modelSupports,
+  modelEnabled,
   validateCatalog,
 } from "./catalog.js";
 export {
@@ -28,6 +29,7 @@ export {
   createDefaultSettings,
   migrateSettings,
   validateSettings,
+  assertExplicitAssignments,
 } from "./settings.js";
 export { planRoute } from "./planner.js";
 export { sanitizeResult, sanitizeText } from "./sanitize.js";

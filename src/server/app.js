@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { ControlService } from "./service.js";
+import { MAX_SETTINGS_BYTES } from "./settings-store.js";
 import {
   assertLoopbackHost,
   assertTrustedMutation,
@@ -23,6 +24,7 @@ function errorPayload(error) {
   return {
     error: {
       code: error?.code ?? "INTERNAL_ERROR",
+      ...(Array.isArray(error?.reasons) ? { reasons: error.reasons.slice(0, 8) } : {}),
       message: error?.statusCode ? error.message : "The local control service encountered an error.",
     },
   };
@@ -99,6 +101,7 @@ export async function handleApi(
     return true;
   }
   if (request.method === "GET" && url.pathname === "/api/state") {
+    await service.reloadSettings?.();
     json(response, 200, service.getState());
     return true;
   }
@@ -161,11 +164,15 @@ export async function handleApi(
     return true;
   }
   if (request.method === "PUT" && url.pathname === "/api/settings") {
-    const body = await readJson(request);
-    json(response, 200, await service.updateSettings(body?.settings ?? body));
+    const body = await readJson(request, { maxBytes: MAX_SETTINGS_BYTES });
+    json(response, 200, await service.updateSettings(body?.settings ?? body, {
+      expectedSettingsRevision: body?.expectedSettingsRevision,
+      catalogRevision: body?.catalogRevision,
+    }));
     return true;
   }
   if (request.method === "POST" && url.pathname === "/api/route") {
+    await service.reloadSettings?.();
     json(response, 200, service.route(await readJson(request)));
     return true;
   }
@@ -199,6 +206,7 @@ export async function createControlServer({
   development = false,
   settingsPath,
   discovery,
+  metadataFetch,
   integrationInstaller,
   usageReader,
   runtimeQualificationRunner,
@@ -209,6 +217,7 @@ export async function createControlServer({
   const service = await new ControlService({
     settingsPath,
     discovery,
+    metadataFetch,
     integrationInstaller,
     usageReader,
     runtimeQualificationRunner,
@@ -250,6 +259,7 @@ export async function createControlServer({
     },
     async close() {
       await Promise.all([
+        service.close(),
         new Promise((resolve, reject) => server.close((error) =>
           error?.code === "ERR_SERVER_NOT_RUNNING"
             ? resolve()
