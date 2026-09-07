@@ -65,3 +65,55 @@ test("explicit conflict rebase applies local changes to latest saved settings wi
   assert.equal(e.draft.costPolicy, "known-cost");
   assert.equal(e.draft.modelControls["fixture/new"].selection, "disabled");
 });
+
+test("conflict rebase preserves remote fields when both editors add the same model control", () => {
+  let editor = createEditor(snapshot("base"), 1);
+  editor = editDraft(editor, {
+    ...editor.draft,
+    modelControls: { "fixture/new": { selection: "enabled" } },
+  });
+  editor = receiveSnapshot(
+    editor,
+    snapshot("remote", {
+      modelControls: {
+        "fixture/new": { selection: "policy", available: false },
+      },
+    }),
+    2,
+  );
+  editor = rebaseDraft(editor);
+  assert.deepEqual(editor.draft.modelControls["fixture/new"], {
+    selection: "enabled",
+    available: false,
+  });
+  assert.equal(editor.baselineRevision, "remote");
+  assert.deepEqual(editor.baseline.modelControls["fixture/new"], {
+    selection: "policy",
+    available: false,
+  });
+});
+
+test("edits during Save preserve new remote control fields while applying only the locally added selection", () => {
+  let editor = createEditor(snapshot("base"), 1);
+  editor = editDraft(editor, { ...editor.draft, autoIncludeNewModels: false });
+  editor = startSave(editor, 2);
+  editor = editDraft(editor, {
+    ...editor.draft,
+    modelControls: { "fixture/new": { selection: "enabled" } },
+  });
+  editor = finishSave(
+    editor,
+    snapshot("saved", {
+      autoIncludeNewModels: false,
+      modelControls: {
+        "fixture/new": { selection: "policy", available: false },
+      },
+    }),
+    2,
+  );
+  assert.deepEqual(editor.draft.modelControls["fixture/new"], {
+    selection: "enabled",
+    available: false,
+  });
+  assert.equal(editor.baselineRevision, "saved");
+});

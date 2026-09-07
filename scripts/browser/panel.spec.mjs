@@ -668,3 +668,131 @@ test("connection mutation stays unavailable during a Save even if later edits re
   expect(state.settings.autoIncludeNewModels).toBe(false);
   expect(requests.filter((r) => r.path.endsWith("/install"))).toEqual([]);
 });
+
+async function setVisibility(page, value) {
+  await page.evaluate((visibility) => {
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: visibility,
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+  }, value);
+}
+
+test("authorized stale return refreshes once with draft preservation and bounds failed-refresh retries", async ({
+  page,
+}) => {
+  await page.clock.install();
+  const errors = await open(page);
+  await observe(page);
+  await page.waitForTimeout(100);
+  expect(
+    requests.filter((request) => request.path === "/api/catalog/refresh"),
+  ).toEqual([]);
+  await enroll(page).uncheck();
+  await setVisibility(page, "hidden");
+  state.system.catalog.stale = true;
+  refreshGate = gate();
+  await setVisibility(page, "visible");
+  await expect
+    .poll(
+      () =>
+        requests.filter((request) => request.path === "/api/catalog/refresh")
+          .length,
+    )
+    .toBe(1);
+  await page.getByRole("radio", { name: "Paid", exact: true }).click();
+  await observe(page);
+  expect(
+    requests.filter((request) => request.path === "/api/catalog/refresh")
+      .length,
+  ).toBe(1);
+  state.catalog.push(model("fixture/Returned"));
+  state.catalogRevision = "returned";
+  state.system.catalog.status = "failure";
+  state.system.catalog.complete = false;
+  state.system.catalog.warning =
+    "Refresh failed; previous source evidence retained.";
+  refreshGate.release();
+  await expect(
+    page.getByText("fixture/Returned", { exact: true }),
+  ).toBeVisible();
+  await expect(enroll(page)).not.toBeChecked();
+  await expect(
+    page.getByRole("radio", { name: "Paid", exact: true }),
+  ).toHaveAttribute("aria-checked", "true");
+  await setVisibility(page, "hidden");
+  await setVisibility(page, "visible");
+  await page.clock.runFor(15000);
+  expect(
+    requests.filter((request) => request.path === "/api/catalog/refresh")
+      .length,
+  ).toBe(1);
+  await page.clock.runFor(15 * 60 * 1000);
+  expect(
+    requests.filter((request) => request.path === "/api/catalog/refresh")
+      .length,
+  ).toBe(1);
+  refreshGate = null;
+  await setVisibility(page, "hidden");
+  await setVisibility(page, "visible");
+  await expect
+    .poll(
+      () =>
+        requests.filter((request) => request.path === "/api/catalog/refresh")
+          .length,
+    )
+    .toBe(2);
+  await expect(refresh(page)).toBeEnabled();
+  await save(page).click();
+  await expect(save(page)).toBeDisabled();
+  expect(saveStarted.expectedSettingsRevision).toBe("s1");
+  expect(state.settings.autoIncludeNewModels).toBe(false);
+  expect(state.settings.costPolicy).toBe("known-cost");
+  expect(requests.some((request) => request.path.endsWith("/install"))).toBe(
+    false,
+  );
+  expect(errors).toEqual([]);
+});
+
+test("read-only stale return remains observational", async ({ page }) => {
+  await open(page, false);
+  state.system.catalog.stale = true;
+  state.catalog.push(model("fixture/Read only return"));
+  await setVisibility(page, "hidden");
+  await setVisibility(page, "visible");
+  await expect(
+    page.getByText("fixture/Read only return", { exact: true }),
+  ).toBeVisible();
+  expect(requests.filter((request) => request.method !== "GET")).toEqual([]);
+});
+
+test("delayed stale-return observation cannot start refresh after a newer Save or hidden transition", async ({
+  page,
+}) => {
+  await open(page);
+  await enroll(page).uncheck();
+  state.system.catalog.stale = true;
+  getGate = gate();
+  const beforeSave = getGate;
+  await setVisibility(page, "hidden");
+  await setVisibility(page, "visible");
+  await expect.poll(() => getGate).toBe(null);
+  await save(page).click();
+  await expect(save(page)).toBeDisabled();
+  beforeSave.release();
+  await page.waitForTimeout(150);
+  expect(
+    requests.filter((request) => request.path === "/api/catalog/refresh"),
+  ).toEqual([]);
+  getGate = gate();
+  const beforeHide = getGate;
+  await observe(page);
+  await expect.poll(() => getGate).toBe(null);
+  await setVisibility(page, "hidden");
+  beforeHide.release();
+  await page.waitForTimeout(150);
+  expect(
+    requests.filter((request) => request.path === "/api/catalog/refresh"),
+  ).toEqual([]);
+});

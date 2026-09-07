@@ -14,6 +14,7 @@ import type {
 import { captureMutationSession } from "./session-auth.js";
 
 const mutationSession = captureMutationSession();
+export const hasMutationSession = mutationSession !== null;
 const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 export class ApiError extends Error {

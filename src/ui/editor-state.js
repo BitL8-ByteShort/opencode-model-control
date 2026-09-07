@@ -4,19 +4,22 @@ import { normalizeState, settingsEqual } from "./model-control.js";
 // snapshot survive a deliberate conflict rebase or edits made during a Save.
 function mergeEdits(before, after, latest) {
   if (settingsEqual(before, after)) return latest;
-  if (
-    !before ||
-    !after ||
-    typeof before !== "object" ||
-    typeof after !== "object" ||
-    Array.isArray(after)
-  )
-    return after;
-  const result = { ...latest };
-  for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
-    if (settingsEqual(before[key], after[key])) continue;
+  if (!after || typeof after !== "object" || Array.isArray(after)) return after;
+  const previous =
+    before && typeof before === "object" && !Array.isArray(before)
+      ? before
+      : {};
+  const result =
+    latest && typeof latest === "object" && !Array.isArray(latest)
+      ? { ...latest }
+      : {};
+  for (const key of new Set([
+    ...Object.keys(previous),
+    ...Object.keys(after),
+  ])) {
+    if (settingsEqual(previous[key], after[key])) continue;
     if (!(key in after)) delete result[key];
-    else result[key] = mergeEdits(before[key], after[key], latest?.[key]);
+    else result[key] = mergeEdits(previous[key], after[key], latest?.[key]);
   }
   return result;
 }

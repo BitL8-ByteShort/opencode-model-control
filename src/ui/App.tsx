@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import {
   ApiError,
+  hasMutationSession,
   getBenchmarkSummary,
   getOpenCodeIntegration,
   getRuntimeQualification,
@@ -43,6 +44,7 @@ export default function App() {
   const editorRef = useRef<EditorState | null>(null);
   const requestSequence = useRef(0);
   const refreshInFlight = useRef(false);
+  const lastRefreshAttempt = useRef<number | null>(null);
   const [conflict, setConflict] = useState(false);
   const state = editor?.state ?? null;
   const savedSettings = editor?.baseline ?? null;
@@ -78,18 +80,47 @@ export default function App() {
     publishEditor(editorRef.current ? receiveSnapshot(editorRef.current, raw, requestId) : createEditor(raw, requestId));
   }, [publishEditor]);
 
-  const observeState = useCallback(async () => {
+  const refresh = useCallback(async () => {
     if (editorRef.current?.saving || refreshInFlight.current) return;
     const requestId = ++requestSequence.current;
-    try { applyState(await getState(), requestId); }
-    catch (error) { setActionError(error instanceof Error ? error.message : "The shared state could not be checked."); }
+    refreshInFlight.current = true;
+    lastRefreshAttempt.current = Date.now();
+    setRefreshing(true); setActionError(""); setNotice("");
+    try {
+      const refreshed = await refreshCatalog() ?? await getState();
+      applyState(refreshed, requestId);
+      const metadata = refreshed.system?.catalog;
+      setNotice(metadata?.complete ? "Available model metadata updated. Unsaved edits are preserved." : "Metadata refresh incomplete. Previous successful source times are preserved.");
+      if (metadata?.warning) setActionError(metadata.warning);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "The catalog could not be refreshed.");
+    } finally { refreshInFlight.current = false; setRefreshing(false); }
   }, [applyState]);
 
+  const observeState = useCallback(async (onReturn = false) => {
+    if (editorRef.current?.saving || refreshInFlight.current) return;
+    const requestId = ++requestSequence.current;
+    try {
+      const observed = await getState();
+      applyState(observed, requestId);
+      // A return observation can become obsolete while the request is pending.
+      // Only its accepted, still-visible state may start the guarded refresh.
+      if (onReturn && hasMutationSession && observed.system?.catalog?.stale === true &&
+          document.visibilityState === "visible" && editorRef.current?.requestId === requestId &&
+          (lastRefreshAttempt.current === null || Date.now() - lastRefreshAttempt.current >= 15 * 60 * 1000)) {
+        await refresh();
+      }
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "The shared state could not be checked.");
+    }
+  }, [applyState, refresh]);
+
   useEffect(() => {
-    const onVisible = () => { if (document.visibilityState === "visible") void observeState(); };
-    const timer = window.setInterval(onVisible, 15000);
-    document.addEventListener("visibilitychange", onVisible);
-    return () => { window.clearInterval(timer); document.removeEventListener("visibilitychange", onVisible); };
+    const poll = () => { if (document.visibilityState === "visible") void observeState(); };
+    const onReturn = () => { if (document.visibilityState === "visible") void observeState(true); };
+    const timer = window.setInterval(poll, 15000);
+    document.addEventListener("visibilitychange", onReturn);
+    return () => { window.clearInterval(timer); document.removeEventListener("visibilitychange", onReturn); };
   }, [observeState]);
 
   const loadDashboard = useCallback(async () => {
@@ -213,22 +244,6 @@ export default function App() {
     if (savedSettings) setDraftSettings(savedSettings);
     setActionError("");
     setNotice("Unsaved changes reverted.");
-  };
-
-  const refresh = async () => {
-    if (editorRef.current?.saving) return;
-    const requestId = ++requestSequence.current;
-    refreshInFlight.current = true;
-    setRefreshing(true); setActionError(""); setNotice("");
-    try {
-      const refreshed = await refreshCatalog() ?? await getState();
-      applyState(refreshed, requestId);
-      const metadata = refreshed.system?.catalog;
-      setNotice(metadata?.complete ? "Available model metadata updated. Unsaved edits are preserved." : "Metadata refresh incomplete. Previous successful source times are preserved.");
-      if (metadata?.warning) setActionError(metadata.warning);
-    } catch (error) {
-      setActionError(error instanceof Error ? error.message : "The catalog could not be refreshed.");
-    } finally { refreshInFlight.current = false; setRefreshing(false); }
   };
 
   const connect = async () => {
