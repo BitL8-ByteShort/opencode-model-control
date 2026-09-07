@@ -11,7 +11,7 @@ npm ci
 npm run verify
 ```
 
-OpenCode 1.18.x is required for full live integration acceptance, but most checks run without it. When OpenCode is installed, the acceptance suite uses isolated temporary configuration directories. Tests and examples must never connect to a real user config, invoke a paid model, or rely on private credentials.
+Exact OpenCode 1.18.22 and 1.18.28 binaries are required for release host/package acceptance. The full source gate puts an exact host on PATH so config-smoke tests do not skip. Host and package acceptance fail if their required binaries are absent. All acceptance uses isolated temporary configuration directories. Tests and examples must never connect to a real user config, invoke a paid model, or rely on private credentials.
 
 Documentation-only changes should still run `npm run verify` when practical. State exactly what was not run and why.
 
@@ -23,9 +23,11 @@ Documentation-only changes should still run `npm run verify` when practical. Sta
 4. Update documentation when behavior, support, security, or benchmark claims change.
 5. Run `npm run verify` and report any check you could not run.
 
-Routing changes must keep unknown pricing blocked, preserve the verified-free default, and require an explicit user choice before known paid models become eligible. Connector changes must preserve unrelated OpenCode configuration, fail closed on ownership conflicts, and include isolated install/disconnect tests.
+Routing changes must keep unknown/expired pricing blocked and preserve the verified-free default. Saving Paid is the explicit authorization for known-paid routing; with auto-include on, it also authorizes future eligible known-paid models without a per-model click. Preserve explicit disables and never write inferred enrollment as saved intent. Public metadata cannot expand host-effective capabilities. Preserve existing ranking and defer authentication integrations unless separately approved. Connector changes must preserve unrelated OpenCode configuration, fail closed on ownership conflicts, and include isolated install/disconnect tests.
 
 Do not include credentials, private prompts, user transcripts, proprietary source code, benchmark data you cannot redistribute, or code copied from closed-source routers. Contributions must be clean-room work or compatible third-party material with its provenance and license recorded.
+
+Run `npm run test:browser` for panel changes. For runtime or release changes use the exact-binary, installed-tarball commands in [Releasing](docs/releasing.md), including both host versions, production UI assets, digest binding, and corrupted-artifact rejection. Do not substitute checkout tests for installed artifact acceptance. Documentation/version-only changes need no new tests that mirror the edits; run relevant existing checks and report which final-byte/CI gates remain.
 
 ## Developer Certificate of Origin
 

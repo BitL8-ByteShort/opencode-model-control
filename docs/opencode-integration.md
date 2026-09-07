@@ -24,7 +24,13 @@ The first form is used at startup; the second powers **Update available models**
 
 This is an OpenCode integration, not a direct OpenRouter integration. OpenCode owns provider authentication and determines which providers/models its resolved configuration exposes. Model Control does not request, extract, log, or transmit provider API-key or token material. The connector does parse the local OpenCode config to preserve unrelated settings, and its full-config backup can contain a key if the user embedded one there. The separate manual runtime-check isolation guard locally parses OpenCode's credential store only to inspect credential-type metadata; it does not copy or transmit secret fields.
 
-A refresh does not invoke a model, confirm an entitlement, prove successful provider access, or confirm current billing terms.
+A refresh does not invoke a model, confirm an entitlement, prove successful provider access, or guarantee provider billing.
+
+Startup refreshes stale metadata before initialization completes; a live service checks every **15 minutes**, and **Update available models** can request an immediate refresh. A shared refresh lease coalesces panel/MCP processes; a recent persisted attempt prevents duplicate periodic work. OpenCode discovery and the independent public metadata fetch run concurrently. Failed or incomplete discovery retains the last usable model records; complete discovery can mark an absent model unavailable while preserving its identity and saved choices. The panel distinguishes last attempt, last successful discovery, and last successful pricing retrieval. A failed refresh cannot renew pricing freshness. Refresh does not invoke provider inference or rewrite OpenCode config; OpenCode itself may normalize its standard `$schema` field.
+
+Pricing is matched by the exact provider/full model key and API identity (model ID, npm adapter, and normalized endpoint). A similarly named model, a `-free` suffix, arbitrary CLI zeros, and bundled historical evidence cannot authorize free routing. Model Control fetches the fixed public `https://models.dev/api.json` endpoint without credentials; URLs inside metadata are never fetched. Complete, finite, nonnegative input/output rates are required. Every supported supplied billing dimension counts: reasoning, cache read/write, audio input/output, context tiers, legacy over-200k rates, and experimental modes. With complete valid evidence, any positive rate means paid; all supplied rates must be valid and exactly zero for free. Missing, malformed, unsupported, or conflicting evidence is unknown and blocked. Complete positive CLI evidence can establish `reported-paid` when independent evidence does not contradict it; CLI zero cannot establish free.
+
+Pricing evidence expires after **24 hours**, checked at route time even without another refresh. Successful HTTP 200 or cached 304 revalidation renews public-source freshness; a failed attempt does not. Cached evidence remains usable only until its existing expiry. Public-source digests and timestamps describe retrieved metadata, not a billing guarantee or model-quality score.
 
 ## Managed config surface
 
@@ -64,7 +70,7 @@ The top-level plugin entry is a canonical absolute `file://` URL to the installe
 
 The connector does not add provider configuration or API keys. When **Make Omc-Router my default agent** is enabled, it adds `default_agent: "omc-router"` only if the OpenCode config has no default. An existing user-owned default is preserved. If this installation previously added the default, disabling the option on a later Connect removes only that receipt-owned value.
 
-The generated config disables `model-control_*` globally and opts only `omc-router` back in. Specialists deny those tools and further delegation. The code worker retains bounded implementation tools, while the independent reviewer is limited to read/search tools and has no shell, edit, or write permission. A vision worker is generated only when OpenCode reports the exact model supports text output, tool calls, and the required media input.
+The generated config disables `model-control_*` globally and opts only `omc-router` back in. Specialists deny those tools and further delegation. The code worker retains bounded implementation tools, while the independent reviewer is limited to read/search tools and has no shell, edit, or write permission. Managed surface version 2 always generates all four model-free agent definitions. A vision model is selected at dispatch only when current effective text output, tool calls, and the actual media input are confirmed.
 
 OpenCode's documented surfaces are the source of truth:
 
@@ -117,14 +123,14 @@ If automatic rollback reports that it could not restore the config, stop making 
 
 | Agent | Mode | Initial intent |
 | --- | --- | --- |
-| `omc-router` | Primary | Text planning, policy lookup, and bounded delegation; Big Pickle by default |
+| `omc-router` | Primary | Text planning, policy lookup, and bounded delegation using saved policy |
 | `omc-code-worker` | Subagent | Bounded implementation and one possible review-driven repair |
 | `omc-vision-worker` | Subagent | Media-capable, tool-call-capable model assignment that also powers Omc-Router media turns |
 | `omc-reviewer` | Subagent | Independent read-only text or code review; no shell, edit, or write permission |
 
-Initial assignments are not benchmark winners. Automatic selection requires discovery, availability, Model Control enablement, permitted pricing, compatible modality, required access/tool capability, and a positive role profile.
+Role choices are not benchmark winners. Automatic selection requires discovery, availability, Model Control enablement, permitted pricing, compatible modality, required access/tool capability, and a positive role profile.
 
-For an authorized code change, the generated Omc-Router instructions call for implementation by `omc-code-worker`, independent read-only inspection of the resulting workspace changes and tests by `omc-reviewer`, and at most one return to the same code worker when the reviewer reports a concrete defect and the review repair pass is enabled. It does not switch to an alternate model. Users do not need to invoke either specialist manually. This is a prompt-governed workflow; specialists are prevented from recursive task delegation, but stock OpenCode does not enforce the repair count independently of the primary's instructions.
+For an authorized code change, the generated Omc-Router instructions call for implementation by `omc-code-worker`, independent read-only inspection of the resulting workspace changes and tests by `omc-reviewer`, and at most one return to the same code worker when the reviewer reports a concrete defect and the review repair pass is enabled. It does not switch to an alternate model. Users do not need to invoke either specialist manually. Instructions govern task decomposition and synthesis; plugin guards additionally restrict specialist tools and current delegation/repair authority. These guards do not establish output correctness or replace review of consequential actions.
 
 ## Free and Paid preference
 
@@ -139,15 +145,29 @@ The stored settings intentionally separate priority and permission:
 
 **Free** uses `free-first + free-only`. **Paid** uses `paid-first + known-cost`. Known-cost mode allows both verified-free and known-paid candidates; it does not make unknown pricing eligible.
 
-A model is:
+**Automatically include new models** defaults on. A model with `selection: "policy"` (including an absent control) follows that setting and the saved Free/Paid policy. Free permits current verified-free evidence only; Paid permits known-paid and verified-free models and prefers paid after hard gates. Saving Paid with auto-include on authorizes future eligible known-paid models without a separate click for every new model. Turning auto-include off excludes policy-following models; explicit enables still apply. An explicit disable always wins. An enable or role pin cannot bypass unknown/expired pricing, availability, capabilities, or cost policy.
 
-- **verified free** only when authoritative evidence establishes exact zero input and output prices;
-- **paid** when verified input or output pricing is positive;
-- **unknown** when pricing is missing, normalized, ambiguous, or malformed.
+Selecting a compatible role model can explicitly enable it in the draft; selecting Automatic changes the role choice without writing inferred model enables. **Save changes** commits user intent. Refresh never adds inferred controls or rewrites saved intent.
 
-A model name ending in `-free` is not sufficient evidence by itself. OpenCode may normalize missing pricing fields to zero, so arbitrary CLI zero values remain unknown unless independently verified.
+Exact pricing and expiry follow the discovery boundary above. Supplemental public capabilities never expand effective OpenCode permissions.
 
-Newly discovered models are visible and disabled by default. The user must explicitly allow Model Control to select them. They can do that in Models or by deliberately choosing an available, cost-allowed, role-compatible model in a role dropdown; that selection atomically enables only the chosen model in the draft. Automatic selection never enables a model, and Save remains the commit point.
+## Live changes and host reload limits
+
+All four stable managed agents are installed without baked-in `model` fields: `omc-router`, `omc-code-worker`, `omc-vision-worker`, and `omc-reviewer`. The local plugin reads coherent saved settings/catalog state for every owned turn, including text, specialist tasks, and ordinary resumed tasks. It intersects eligible catalog models with the current OpenCode instance's loaded provider inventory. Saving A → B takes effect on the next owned turn when B is already loaded; ordinary policy changes do not rewrite config or require reconnecting.
+
+At `chat.params`, the plugin rechecks current policy, price expiry, loaded inventory, exact provider/model/API identity, endpoint/transport, effective capabilities, and effective rates before inference. Missing or corrupt saved state, disabled or unavailable selections, incompatible effective metadata, and unknown pricing fail closed. An explicit pin is never silently replaced. Unrelated OpenCode agents keep their own selections.
+
+A newly discovered C absent from the running host inventory needs an explicit OpenCode reload/restart. It blocks with `OMC_HOST_MODEL_MISSING`; automatic roles may choose eligible already-loaded models. OpenCode 1.18.22/1.18.28 sanitize HTTP plugin failures to `UnknownError`, so the actionable reload guidance is a same-directory TUI toast/event. Headless consumers must read the instance event stream to receive that text. Model Control never disposes or restarts an OpenCode instance automatically. Changes to installed agent instructions/permissions, package or plugin paths, or the optional default agent require **Update connection** and an OpenCode restart.
+
+Ordinary child resumes adopt current saved policy. Only a completed owned worker followed by its matching completed reviewer can authorize one review-driven repair on that worker's original model. The repair rechecks current eligibility and stops if that model is revoked. Background acknowledgment alone is not completion: matching terminal host events are required. This evidence belongs to the current parent workflow in the running plugin instance; a new user turn, unrelated parent, or completed repair cannot reuse it. No persistence across an OpenCode restart is promised.
+
+Owned slash subtasks have a narrow, one-shot allowance for OpenCode's synthetic parent summary, which bypasses `chat.message`. The plugin verifies the exact session/message, owned agent, inherited model, matching completed child, and fixed synthetic summary content before allowing it; all dispatch guards still run. If the parent pin changes while the child runs, the summary inherits the old model and safely blocks. A new user turn can adopt the new policy. Unmatched synthetic or ordinary messages do not gain authority.
+
+## Saved state and migration
+
+Settings schema v3 stores intent as `selection: "policy" | "enabled" | "disabled"`, plus optional user availability exclusions; effective eligibility is derived separately. Legacy v0/v1/v2 Boolean controls migrate to explicit choices while preserving disables, Paid policy, pins (including absent model IDs), workflow bounds, and default-agent preference. Migration first saves an exact private `settings.json.v<old-version>.backup-<uuid>` copy, then atomically writes v3. State directories use mode `0700`; settings, cache, snapshot, status, migration backups, and receipts use `0600`.
+
+Settings and catalog reads/writes share a cross-process lock. Save uses the last settings revision for compare-and-swap: a settings conflict returns 409 without overwriting either writer. A catalog-only change can rebase untouched choices, but newly edited ineligible selections return a selection conflict. Existing blocked pins remain visible through unrelated edits. The panel preserves unsaved drafts during refresh and conflicts so the user can review and retry. Corrupt saved state fails closed; preserve the private state and migration backup for recovery rather than deleting disables or replacing the whole state with defaults. Full OpenCode config backups are a separate connector recovery mechanism.
 
 ## Advanced developer tools
 
@@ -173,7 +193,7 @@ Two environment variables are advanced/testing overrides rather than part of the
 
 Connect installs the bundled local plugin in OpenCode's top-level `plugin` array. For a media-bearing `omc-router` `chat.message` turn, the plugin:
 
-1. reads each attachment's type/MIME metadata and does nothing when no image, audio, video, or PDF is present;
+1. reads each attachment's type/MIME metadata to determine the media lane; text-only owned turns still receive ordinary role routing;
 2. reloads the saved catalog snapshot and routing settings;
 3. resolves the explicit or automatic vision-worker assignment through enablement, availability, cost, role, access, tool-call, text-output, and modality gates;
 4. selects that model for the current message before provider dispatch;
@@ -184,7 +204,7 @@ The local authorization classifier ignores synthetic or ignored text parts, acce
 
 For ordinary media analysis, Omc-Router and its tools do not remain on the turn: the generated vision agent is tool-free, while plugin permission/tool hooks provide an independent session-scoped denial that resets on the next message. For an explicit media-assisted code request, Omc-Router remains active so the vision-capable model can inspect the attachment, consult policy, and continue through code worker -> read-only reviewer without a manual `@omc-vision-worker` step. If no compatible eligible vision model exists, the plugin raises a fixed local error instead of sending media to an incompatible or policy-blocked model.
 
-This automatic switch is deliberately narrow: it applies only to `omc-router` media turns. Other agents keep their selected model. Saved media-policy gates are read on every media turn, while generated agent definitions, the plugin entry, and the optional default-agent value require Connect and an OpenCode restart to change.
+The automatic media-to-vision switch applies only to `omc-router` media turns. Every owned role also receives the saved-state and pre-inference checks described above; unrelated agents keep their selected model.
 
 ## Manual runtime access check
 

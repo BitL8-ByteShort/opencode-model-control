@@ -2,6 +2,16 @@
 
 All notable changes to OpenCode Model Control are recorded here. The project follows [Semantic Versioning](https://semver.org/).
 
+## 0.3.0
+
+- Replace historical free-model authorization with exact provider/model/API pricing evidence from credential-free public Models.dev metadata, including all supported supplied billing dimensions. Refresh every 15 minutes while active; expire evidence after 24 hours and block missing, conflicting, malformed, or expired pricing at dispatch.
+- Preserve full effective and supplemental capabilities, including unknown versus false, modalities, tools, reasoning, structured output and limits. Supplemental metadata cannot expand OpenCode's effective restrictions; ranking and benchmark qualification are unchanged.
+- Add default-on policy inclusion with explicit enable/disable overrides. Saved Paid policy can authorize future eligible known-paid models; explicit disables, unknown pricing and incompatible models remain blocked.
+- Migrate saved intent to schema v3 with private exact backups, cross-process coordination and revision-aware Save. Preserve drafts and blocked pins through refresh/conflicts without overwriting another writer or persisting inferred enrollment.
+- Install stable model-free agents and apply current saved roles to all owned turns and ordinary resumed tasks. Recheck host inventory, API identity, capabilities, rates and policy immediately before inference. Already-loaded role changes apply live; newly discovered models absent from the running host require an explicit reload.
+- Preserve tool-free media analysis and bounded worker/reviewer repair with message-scoped, revocation-aware runtime guards, verified background completion, and a narrow owned slash-summary allowance. Headless reload guidance requires the OpenCode event stream; instances are never automatically disposed.
+- Add exact installed-package Linux/macOS host and production-browser acceptance with tarball and served-asset digests, plus corrupted-package regressions. These synthetic integration checks make no real-provider inference or model-quality claims. Final packaging and public-channel verification use separate release gates.
+
 ## 0.2.1 - 2026-09-01
 
 - Made any available, capability-compatible known-paid model selectable in a role dropdown while Paid mode is active, regardless of provider. Selecting a disabled model is now the explicit opt-in that enables only that model for routing; Automatic never enables models by itself.

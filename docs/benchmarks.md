@@ -13,6 +13,12 @@ The benchmark answers four narrower questions:
 
 It does not establish universal model quality or predict future provider behavior.
 
+## 0.3.0 evidence boundary
+
+Dynamic pricing, capability discovery, policy inclusion, and live role changes do not promote model-quality evidence or change ranking. A newly discovered or renamed model needs its own exact identity and current pricing evidence; a prior model's score or historical free label is not a substitute.
+
+The release host matrix uses real OpenCode 1.18.22/1.18.28 processes and a loopback synthetic provider to check dispatch and guard behavior. The installed-package browser suite exercises compiled production assets. These are integration and artifact tests, with zero real-provider inference, not quality or provider-access benchmarks. The separately labeled public Models.dev smoke retrieves metadata only. Neither source freshness nor successful package acceptance qualifies a role.
+
 ## Runtime access is a separate check
 
 The control panel's **Run one runtime check** button is not this benchmark. It starts one bounded, isolated, plugin-free OpenCode run with a fixed text-only sentinel for one selected model after the user explicitly confirms the provider-call and possible cost/data boundaries. OpenCode may retry retryable provider failures inside that run, so it can make more than one provider attempt. Each attempt can consume quota, incur cost, or be retained under OpenCode's and the provider's terms. The check never runs during startup, catalog refresh, Save, Connect, or Reload summary.
@@ -31,7 +37,7 @@ Record, in machine-readable form:
 - Exact OpenCode version.
 - Provider-qualified model IDs and reported model metadata.
 - Relevant role settings, prompts, delegation limits, and randomness controls.
-- Whether the bundled media plugin was installed, plus the recorded route receipt for attachment cases.
+- Whether the bundled owned-role routing plugin was installed, plus the recorded route receipt for attachment cases.
 - Cost preference, cost policy, and pricing-evidence source.
 - Number of repetitions, timeout, retry policy, and concurrency.
 - Provider errors, unavailable models, rate limits, and malformed responses.
@@ -84,7 +90,7 @@ Do not collapse quality, safety, latency, and reliability into one unexplained s
 A role assignment can move from provisional to qualified only when:
 
 - The exact model is still available and its pricing class is supported by current evidence.
-- A verified-free qualification is promoted only from a run where exact zero pricing was independently established.
+- A verified-free qualification is promoted only from a run where exact-zero pricing across every supported supplied billing dimension was independently established for the exact API identity and was unexpired at dispatch.
 - It passes all hard modality and safety constraints.
 - Its confidence interval and sample size are published.
 - It meets the role's predeclared quality and critical-failure thresholds.
