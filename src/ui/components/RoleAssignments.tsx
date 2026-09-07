@@ -1,6 +1,8 @@
 import type { CatalogModel, RouterSettings } from "../types";
 import {
   isRoleModelAssignable,
+  modelIntentEnabled,
+  modelEligibilityReasons,
   isRoleModelEligible,
   modelDisplayName,
   ROLE_DEFINITIONS,
@@ -10,7 +12,7 @@ import {
 import { Icon, Panel } from "./Primitives";
 
 function selectHint(role: string) {
-  if (role === "vision-worker") return "Only image-input models are eligible.";
+  if (role === "vision-worker") return "Media inputs may include image, audio, video or PDF; each request must match the reported inputs.";
   if (role === "orchestrator") return "Only models reporting orchestration support are eligible.";
   return "Choose any compatible, available model allowed by the cost policy.";
 }
@@ -24,7 +26,7 @@ export function RoleAssignments({
   settings: RouterSettings;
   onChange: (next: RouterSettings) => void;
 }) {
-  const enabledModels = catalog.filter((model) => settings.modelControls[model.id]?.enabled);
+  const enabledModels = catalog.filter((model) => modelIntentEnabled(settings, model.id));
 
   const updateRole = (role: string, modelId: string) => {
     onChange(selectRoleModel(settings, catalog, role, modelId) as RouterSettings);
@@ -58,6 +60,8 @@ export function RoleAssignments({
             type="button"
           >Paid</button>
         </div>
+        <label className="enrollment-control"><input type="checkbox" checked={settings.autoIncludeNewModels} onChange={event => onChange({...settings, autoIncludeNewModels: event.target.checked})} />Automatically include new models</label>
+        <small>{settings.autoIncludeNewModels ? "Policy-following models join automatically when eligible. In Paid mode, newly discovered known-paid models can be enrolled and incur charges. Explicit disables remain off." : "New policy-following models stay off until explicitly enabled. Returning a model to Policy uses this setting."}</small>
         <small>{settings.costPolicy === "known-cost"
           ? "Paid-first automatic routing is enabled. Provider charges may apply; unknown-cost models stay blocked."
           : "Only models with independently verified free pricing can be routed."}</small>
@@ -69,16 +73,18 @@ export function RoleAssignments({
             <span className="select-wrap">
               <Icon name={role.key === "vision-worker" ? "image" : role.key === "reviewer" ? "check" : "code"} size={16} />
               <select
+                aria-label={role.label}
                 aria-describedby={`${role.key}-hint`}
                 onChange={(event) => updateRole(role.key, event.target.value)}
                 value={settings.roleAssignments[role.key] ?? ""}
               >
                 <option value="auto">Automatic</option>
+                {settings.roleAssignments[role.key] !== "auto" && !catalog.some(model => model.id === settings.roleAssignments[role.key]) ? <option value={settings.roleAssignments[role.key]} disabled>{settings.roleAssignments[role.key]} — unavailable; retained pin</option> : null}
                 {catalog.map((model) => {
                   const assignable = isRoleModelAssignable(model, settings, role.key);
                   const eligible = isRoleModelEligible(model, settings, role.key);
                   const suffix = !assignable
-                    ? " — not eligible"
+                    ? ` — ${modelEligibilityReasons(model, settings, role.key, false).join(" ")}`
                     : eligible
                       ? ""
                       : " — enable on selection";
@@ -86,6 +92,7 @@ export function RoleAssignments({
                 })}
               </select>
             </span>
+            {settings.roleAssignments[role.key] !== "auto" && modelEligibilityReasons(catalog.find(model => model.id === settings.roleAssignments[role.key]), settings, role.key).length > 0 ? <small className="inline-alert inline-alert--warning">Retained pin: {settings.roleAssignments[role.key]}. {modelEligibilityReasons(catalog.find(model => model.id === settings.roleAssignments[role.key]), settings, role.key).join(" ")} Choose Automatic or another model to replace it.</small> : null}
             <small className="field__hint" id={`${role.key}-hint`}>{selectHint(role.key)} Selecting a disabled model explicitly enables it for routing.</small>
           </label>
         ))}

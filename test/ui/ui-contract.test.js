@@ -61,8 +61,6 @@ test("core interactions expose semantic labels and unsaved-state protection", as
   assert.match(routeTester, /Review repair/);
   assert.match(routeTester, /Up to 1 pass after review/);
   assert.match(app, /Update available models/);
-  assert.match(app, /connectionChanged = result\.changed === true/);
-  assert.match(app, /catalogRefreshNotice\(\{ connectionChanged \}\)/);
   assert.match(config, /Save your routing changes before connecting or updating OpenCode/);
   assert.match(config, /Connect to OpenCode/);
   assert.match(config, /Disconnect/);

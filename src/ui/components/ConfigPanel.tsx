@@ -155,7 +155,7 @@ export function ConfigPanel({
       {hasUnsavedChanges ? <p className="inline-alert inline-alert--warning">Save your routing changes before connecting or updating OpenCode.</p> : null}
       <div className="button-row">
         <Button
-          disabled={hasUnsavedChanges || integrationBusy || !integration}
+          disabled={hasUnsavedChanges || settingsBusy || integrationBusy || !integration}
           icon={integration?.installed ? "refresh" : "check"}
           onClick={onConnect}
           tone="primary"

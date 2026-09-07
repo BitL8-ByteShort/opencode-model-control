@@ -55,10 +55,12 @@
     "prepack": "npm run verify",
     "start": "node bin/opencode-model-control.js",
     "test": "node --test",
-    "verify": "npm run check && npm test && npm run build"
+    "verify": "npm run check && npm test && npm run build",
+    "test:browser": "playwright test --config scripts/browser/playwright.config.mjs"
   },
   "devDependencies": {
     "@modelcontextprotocol/client": "2.0.0",
+    "@playwright/test": "1.58.2",
     "@types/node": "26.4.0",
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.5",

@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import {
+  ApiError,
   getBenchmarkSummary,
   getOpenCodeIntegration,
   getRuntimeQualification,
@@ -12,13 +13,13 @@ import {
   updateSettings,
 } from "./api";
 import {
-  catalogRefreshNotice,
-  normalizeState,
   settingsEqual,
   settingsForApi,
   toggleEnabledModel,
+  selectModelPolicy,
 } from "./model-control.js";
-import type { BenchmarkSummary, ModelControlState, OpenCodeIntegrationStatus, OpenCodeUsage, RouterSettings, RuntimeQualificationSummary, UsageWindow } from "./types";
+import { createEditor, receiveSnapshot, editDraft, startSave, finishSave, failSave, rebaseDraft } from "./editor-state.js";
+import type { EditorState, BenchmarkSummary, ModelControlState, OpenCodeIntegrationStatus, OpenCodeUsage, RouterSettings, RuntimeQualificationSummary, UsageWindow } from "./types";
 import { AppShell } from "./components/AppShell";
 import { BenchmarkPanel } from "./components/BenchmarkPanel";
 import { ConfigPanel } from "./components/ConfigPanel";
@@ -38,9 +39,21 @@ function formatCatalogTime(value?: string) {
 }
 
 export default function App() {
-  const [state, setState] = useState<ModelControlState | null>(null);
-  const [savedSettings, setSavedSettings] = useState<RouterSettings | null>(null);
-  const [draftSettings, setDraftSettings] = useState<RouterSettings | null>(null);
+  const [editor, setEditor] = useState<EditorState | null>(null);
+  const editorRef = useRef<EditorState | null>(null);
+  const requestSequence = useRef(0);
+  const refreshInFlight = useRef(false);
+  const [conflict, setConflict] = useState(false);
+  const state = editor?.state ?? null;
+  const savedSettings = editor?.baseline ?? null;
+  const draftSettings = editor?.draft ?? null;
+  const publishEditor = useCallback((next: EditorState) => { editorRef.current = next; setEditor(next); }, []);
+  const setDraftSettings = (update: RouterSettings | ((current: RouterSettings | null) => RouterSettings | null)) => {
+    const current = editorRef.current;
+    if (!current) return;
+    const next = typeof update === "function" ? update(current.draft) : update;
+    if (next) publishEditor(editDraft(current, next));
+  };
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [actionError, setActionError] = useState("");
@@ -61,18 +74,30 @@ export default function App() {
   const [usageLoading, setUsageLoading] = useState(true);
   const [usageError, setUsageError] = useState("");
 
-  const applyState = useCallback((raw: ModelControlState) => {
-    const normalized = normalizeState(raw) as ModelControlState;
-    setState(normalized);
-    setSavedSettings(normalized.settings);
-    setDraftSettings(normalized.settings);
-  }, []);
+  const applyState = useCallback((raw: ModelControlState, requestId: number) => {
+    publishEditor(editorRef.current ? receiveSnapshot(editorRef.current, raw, requestId) : createEditor(raw, requestId));
+  }, [publishEditor]);
+
+  const observeState = useCallback(async () => {
+    if (editorRef.current?.saving || refreshInFlight.current) return;
+    const requestId = ++requestSequence.current;
+    try { applyState(await getState(), requestId); }
+    catch (error) { setActionError(error instanceof Error ? error.message : "The shared state could not be checked."); }
+  }, [applyState]);
+
+  useEffect(() => {
+    const onVisible = () => { if (document.visibilityState === "visible") void observeState(); };
+    const timer = window.setInterval(onVisible, 15000);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => { window.clearInterval(timer); document.removeEventListener("visibilitychange", onVisible); };
+  }, [observeState]);
 
   const loadDashboard = useCallback(async () => {
     setLoading(true);
     setLoadError("");
     try {
-      applyState(await getState());
+      const requestId = ++requestSequence.current;
+      applyState(await getState(), requestId);
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : "The local state could not be loaded.");
     } finally {
@@ -153,35 +178,35 @@ export default function App() {
   }, [dirty]);
 
   const save = async () => {
-    if (!draftSettings || !dirty) return;
+    const current = editorRef.current;
+    if (!current || current.saving || settingsEqual(current.baseline, current.draft)) return;
+    const requestId = ++requestSequence.current;
+    publishEditor(startSave(current, requestId));
     setSaving(true);
-    setActionError("");
-    setNotice("");
+    setActionError(""); setNotice("");
     try {
-      applyState(await updateSettings(settingsForApi(draftSettings) as RouterSettings));
-      if (integration?.installed && integration.healthy) {
-        try {
-          const result = await installOpenCodeIntegration();
-          setIntegration(result);
-          setNotice(result.changed
-            ? "Routing settings saved and the OpenCode connection was updated. Restart OpenCode to load the changes."
-            : "Routing settings saved locally.");
-        } catch (error) {
-          setActionError(
-            `Routing settings were saved, but the OpenCode connection could not be updated. ${
-              error instanceof Error ? error.message : "Open the connection panel and try again."
-            }`,
-          );
-          setNotice("Routing settings saved locally.");
-        }
-      } else {
-        setNotice("Routing settings saved locally.");
-      }
+      const result = await updateSettings(settingsForApi(current.draft) as RouterSettings, current.baselineRevision, current.state.catalogRevision);
+      publishEditor(finishSave(editorRef.current, result, requestId));
+      setConflict(false);
+      setNotice(current.baseline.makeRouterDefault !== current.draft.makeRouterDefault
+        ? "Settings saved. Use Update connection to apply the default-agent change, then restart OpenCode."
+        : `Routing settings saved locally.${result.rebased ? " Latest catalog retained." : ""}`);
+      if (current.baseline.makeRouterDefault !== current.draft.makeRouterDefault) void loadIntegration();
     } catch (error) {
+      if (editorRef.current) publishEditor(failSave(editorRef.current));
       setActionError(error instanceof Error ? error.message : "Settings could not be saved.");
-    } finally {
-      setSaving(false);
-    }
+      if (error instanceof ApiError && error.status === 409) {
+        setConflict(true);
+        await observeState();
+      }
+    } finally { setSaving(false); }
+  };
+
+  const rebase = () => {
+    if (!editorRef.current) return;
+    publishEditor(rebaseDraft(editorRef.current));
+    setConflict(false); setActionError("");
+    setNotice("Your edits now use the latest saved settings. Review the draft, then Save changes.");
   };
 
   const reset = () => {
@@ -191,42 +216,19 @@ export default function App() {
   };
 
   const refresh = async () => {
-    setRefreshing(true);
-    setActionError("");
-    setNotice("");
+    if (editorRef.current?.saving) return;
+    const requestId = ++requestSequence.current;
+    refreshInFlight.current = true;
+    setRefreshing(true); setActionError(""); setNotice("");
     try {
-      const refreshed = await refreshCatalog();
-      if (refreshed && Array.isArray(refreshed.catalog)) applyState(refreshed);
-      else applyState(await getState());
-      const catalogWarning = refreshed?.system?.catalog?.warning;
-      let connectionWarning = "";
-      let connectionChanged = false;
-      if (integration?.installed && integration.healthy) {
-        try {
-          const result = await installOpenCodeIntegration();
-          setIntegration(result);
-          connectionChanged = result.changed === true;
-        } catch (error) {
-          connectionWarning = `Models were updated, but the OpenCode connection could not be updated. ${
-            error instanceof Error ? error.message : "Open the connection panel and try again."
-          }`;
-        }
-      }
-      const warnings = [catalogWarning, connectionWarning].filter(Boolean).join(" ");
-      if (warnings) {
-        setActionError(warnings);
-        setNotice(catalogRefreshNotice({
-          incomplete: Boolean(catalogWarning),
-          connectionChanged,
-        }));
-      } else {
-        setNotice(catalogRefreshNotice({ connectionChanged }));
-      }
+      const refreshed = await refreshCatalog() ?? await getState();
+      applyState(refreshed, requestId);
+      const metadata = refreshed.system?.catalog;
+      setNotice(metadata?.complete ? "Available model metadata updated. Unsaved edits are preserved." : "Metadata refresh incomplete. Previous successful source times are preserved.");
+      if (metadata?.warning) setActionError(metadata.warning);
     } catch (error) {
       setActionError(error instanceof Error ? error.message : "The catalog could not be refreshed.");
-    } finally {
-      setRefreshing(false);
-    }
+    } finally { refreshInFlight.current = false; setRefreshing(false); }
   };
 
   const connect = async () => {
@@ -293,13 +295,6 @@ export default function App() {
     setDraftSettings((current) => {
       if (!current) return current;
       const next = toggleEnabledModel(current, modelId, enabled) as RouterSettings;
-      if (!enabled) {
-        const roleAssignments = { ...next.roleAssignments };
-        for (const role of Object.keys(roleAssignments)) {
-          if (roleAssignments[role] === modelId) roleAssignments[role] = "auto";
-        }
-        next.roleAssignments = roleAssignments;
-      }
       return next;
     });
     setNotice("");
@@ -329,22 +324,27 @@ export default function App() {
     <AppShell footer={footer} headerActions={headerActions}>
       <div aria-atomic="true" aria-live="polite" className="announcer">{notice}</div>
       {actionError ? <div className="global-alert" role="alert"><span>{actionError}</span><button aria-label="Dismiss error" onClick={() => setActionError("")} type="button">Dismiss</button></div> : null}
+      {conflict ? <div className="global-alert"><span>Your draft is retained. Reload the latest saved state, then deliberately keep your edits on it before retrying.</span><Button onClick={() => void observeState()} tone="quiet">Check latest saved settings</Button><Button disabled={saving} onClick={rebase} tone="quiet">Keep my edits on latest settings</Button></div> : null}
       {notice ? <div className="toast" role="status"><Icon name="check" size={16} />{notice}</div> : null}
       {loading ? <LoadingDashboard /> : loadError ? <ErrorPanel message={loadError} onRetry={loadDashboard} /> : state && draftSettings ? (
         <>
           <RoutingOverview catalog={state.catalog} settings={draftSettings} />
           <section aria-label="Control status" className="system-strip">
-            <div><span>OpenCode</span><strong>{opencodeReady ? `Connected${state.system?.opencode?.version ? ` · v${state.system.opencode.version}` : ""}` : "Not detected"}</strong></div>
+            <div title="Process-local CLI detection; does not confirm a running host inventory."><span>OpenCode CLI diagnostic</span><strong>{opencodeReady ? `Detected${state.system?.opencode?.version ? ` · v${state.system.opencode.version}` : ""}` : "Not detected"}</strong></div>
             <div><span>Catalog source</span><strong>{state.system?.catalog?.source ?? "Live OpenCode catalog"}</strong></div>
-            <div><span>Last refreshed</span><strong>{formatCatalogTime(state.system?.catalog?.lastRefreshed)}</strong></div>
-            <Button disabled={refreshing || dirty} icon="refresh" onClick={refresh} tone="quiet">{refreshing ? "Updating…" : "Update available models"}</Button>
+            <div><span>Last complete success</span><strong>{formatCatalogTime(state.system?.catalog?.lastRefreshed)}</strong></div>
+            <Button disabled={refreshing || saving} icon="refresh" onClick={refresh} tone="quiet">{refreshing ? "Updating…" : "Update available models"}</Button>
           </section>
+          <p className="catalog-freshness">Refresh {state.system?.catalog?.status ?? "not attempted"}{state.system?.catalog?.stale ? " · stale metadata — update available models" : ""}. Last attempt: {formatCatalogTime(state.system?.catalog?.attemptedAt)}. Discovery success: {formatCatalogTime(state.system?.catalog?.discoverySucceededAt)}. Pricing success: {formatCatalogTime(state.system?.catalog?.pricingSucceededAt)}.</p>
+          {state.system?.catalog?.warning ? <p className="inline-alert inline-alert--warning">{state.system.catalog.warning}</p> : null}
+          <p className="catalog-freshness">Saved policy applies at the next owned model selection. Host-loaded model inventory is checked by the plugin at dispatch; if it reports OMC_HOST_MODEL_MISSING, reload OpenCode. A managed plugin update is separate and requires the connection action below.</p>
           <p className="privacy-note"><Icon name="lock" size={16} /><span><strong>Local control is not local inference.</strong> The dashboard and router stay on this computer, but enabled OpenCode provider models may receive routed content under their own data terms. Never include credentials or nonpublic personal data.</span></p>
           {state.catalog.length === 0 ? <EmptyCatalog loading={refreshing} onRefresh={refresh} /> : (
             <div className="dashboard-grid">
               <ModelTable
                 catalog={state.catalog}
                 onToggle={toggleModel}
+                onSelection={(id, selection) => setDraftSettings(current => current ? selectModelPolicy(current, id, selection) as RouterSettings : current)}
                 qualification={runtimeQualification}
                 settings={draftSettings}
               />

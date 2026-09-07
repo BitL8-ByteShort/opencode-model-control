@@ -1,7 +1,17 @@
-const AVAILABLE_STATES = new Set(["available", "ready", "online", "active", "ok"]);
+const AVAILABLE_STATES = new Set([
+  "available",
+  "ready",
+  "online",
+  "active",
+  "ok",
+]);
 
 export const ROLE_DEFINITIONS = Object.freeze([
-  { key: "orchestrator", label: "Primary orchestrator", hint: "Plans and delegates" },
+  {
+    key: "orchestrator",
+    label: "Primary orchestrator",
+    hint: "Plans and delegates",
+  },
   { key: "code-worker", label: "Code worker", hint: "Bounded implementation" },
   { key: "vision-worker", label: "Vision worker", hint: "Image understanding" },
   { key: "reviewer", label: "Reviewer", hint: "Independent review" },
@@ -15,11 +25,18 @@ export function modelDisplayName(model) {
     return model.displayName.trim();
   }
 
-  const tail = typeof model?.id === "string" ? model.id.split("/").at(-1) : "Unknown model";
+  const tail =
+    typeof model?.id === "string"
+      ? model.id.split("/").at(-1)
+      : "Unknown model";
   return tail
     .split("-")
     .filter(Boolean)
-    .map((part) => (/^v?\d/.test(part) ? part.toUpperCase() : `${part[0]?.toUpperCase() ?? ""}${part.slice(1)}`))
+    .map((part) =>
+      /^v?\d/.test(part)
+        ? part.toUpperCase()
+        : `${part[0]?.toUpperCase() ?? ""}${part.slice(1)}`,
+    )
     .join(" ");
 }
 
@@ -35,8 +52,20 @@ export function isModelFree(model) {
 }
 
 export function modelCostClass(model) {
+  if (["free", "paid", "unknown"].includes(model?.pricingClass)) {
+    if (
+      model?.pricing?.expiresAt &&
+      Date.parse(model.pricing.expiresAt) <= Date.now()
+    )
+      return "unknown";
+    return model.pricingClass;
+  }
   if (typeof model?.free === "boolean") return model.free ? "free" : "unknown";
-  if (!model?.free || typeof model.free !== "object" || model.free.verified !== true) {
+  if (
+    !model?.free ||
+    typeof model.free !== "object" ||
+    model.free.verified !== true
+  ) {
     return "unknown";
   }
   const input = model.free.inputUsdPerMillion;
@@ -63,14 +92,19 @@ export function isModelCostAllowed(model, settings) {
 
 export function modelInputModalities(model) {
   if (Array.isArray(model?.modalities)) return model.modalities.map(String);
-  if (model?.modalities && typeof model.modalities === "object" && Array.isArray(model.modalities.input)) {
+  if (
+    model?.modalities &&
+    typeof model.modalities === "object" &&
+    Array.isArray(model.modalities.input)
+  ) {
     return model.modalities.input.map(String);
   }
-  if (Array.isArray(model?.inputModalities)) return model.inputModalities.map(String);
+  if (Array.isArray(model?.inputModalities))
+    return model.inputModalities.map(String);
   return [];
 }
 
-function modelOutputModalities(model) {
+export function modelOutputModalities(model) {
   if (
     model?.modalities &&
     typeof model.modalities === "object" &&
@@ -79,7 +113,8 @@ function modelOutputModalities(model) {
   ) {
     return model.modalities.output.map(String);
   }
-  if (Array.isArray(model?.outputModalities)) return model.outputModalities.map(String);
+  if (Array.isArray(model?.outputModalities))
+    return model.outputModalities.map(String);
   return [];
 }
 
@@ -90,7 +125,8 @@ export function modelRoles(model) {
       .filter(([, value]) => value !== false && value !== 0 && value != null)
       .map(([role]) => role);
   }
-  if (Array.isArray(model?.capabilities)) return model.capabilities.map(String);
+  if (Array.isArray(model?.roleCapabilities))
+    return model.roleCapabilities.map(String);
   return [];
 }
 
@@ -110,30 +146,43 @@ export function evidenceMeta(evidence) {
     typeof evidence === "string"
       ? evidence
       : evidence && typeof evidence === "object"
-        ? evidence.status ?? evidence.state ?? evidence.label
+        ? (evidence.status ?? evidence.state ?? evidence.label)
         : "unverified";
   const normalized = String(value ?? "unverified").toLowerCase();
 
   if (["qualified", "verified", "accepted", "promoted"].includes(normalized)) {
     return { key: "qualified", label: "Qualified evidence", tone: "positive" };
   }
-  if (["provisional", "candidate", "shadow", "experimental"].includes(normalized)) {
+  if (
+    ["provisional", "candidate", "shadow", "experimental"].includes(normalized)
+  ) {
     return { key: "provisional", label: "Unbenchmarked role", tone: "warning" };
   }
-  if (["capability-only", "capability_verified", "capability-verified"].includes(normalized)) {
-    return { key: "provisional", label: "Reported capability; runtime unverified", tone: "warning" };
+  if (
+    ["capability-only", "capability_verified", "capability-verified"].includes(
+      normalized,
+    )
+  ) {
+    return {
+      key: "provisional",
+      label: "Reported capability; runtime unverified",
+      tone: "warning",
+    };
   }
   if (normalized === "runtime-access-only") {
     return {
       key: "provisional",
-      label: evidence?.label ?? "Runtime access checked; role benchmark pending",
+      label:
+        evidence?.label ?? "Runtime access checked; role benchmark pending",
       tone: "warning",
     };
   }
   if (normalized === "runtime-access-failed") {
     return {
       key: "provisional",
-      label: evidence?.label ?? "Runtime access not confirmed; role benchmark pending",
+      label:
+        evidence?.label ??
+        "Runtime access not confirmed; role benchmark pending",
       tone: "warning",
     };
   }
@@ -145,28 +194,23 @@ function normalizedRoleAssignment(value) {
 }
 
 export function normalizeSettings(settings = {}, catalog = []) {
-  const modelControls = {};
-  for (const model of catalog) {
-    const current = settings.modelControls?.[model.id];
-    modelControls[model.id] = {
-      enabled:
-        typeof current?.enabled === "boolean"
-          ? current.enabled
-          : typeof model.enabled === "boolean"
-            ? model.enabled
-            : Boolean(model.enabledByDefault),
-      available:
-        typeof current?.available === "boolean" ? current.available : isModelAvailable(model),
-    };
-  }
-  for (const [id, control] of Object.entries(settings.modelControls ?? {})) {
-    if (!modelControls[id]) {
-      modelControls[id] = {
-        enabled: Boolean(control?.enabled),
-        ...(typeof control?.available === "boolean" ? { available: control.available } : {}),
-      };
-    }
-  }
+  const modelControls = Object.fromEntries(
+    Object.entries(settings.modelControls ?? {}).map(([id, control]) => [
+      id,
+      {
+        selection:
+          control?.selection ??
+          (typeof control?.enabled === "boolean"
+            ? control.enabled
+              ? "enabled"
+              : "disabled"
+            : "policy"),
+        ...(typeof control?.available === "boolean"
+          ? { available: control.available }
+          : {}),
+      },
+    ]),
+  );
 
   const roles = settings.roleAssignments ?? {};
   const orchestrator =
@@ -176,7 +220,8 @@ export function normalizeSettings(settings = {}, catalog = []) {
 
   return {
     ...settings,
-    schemaVersion: 2,
+    schemaVersion: 3,
+    autoIncludeNewModels: settings.autoIncludeNewModels !== false,
     costPreference:
       settings.costPreference === "paid-first" || settings.freeOnly === false
         ? "paid-first"
@@ -188,14 +233,25 @@ export function normalizeSettings(settings = {}, catalog = []) {
     modelControls,
     roleAssignments: {
       orchestrator,
-      "code-worker": normalizedRoleAssignment(roles["code-worker"] ?? roles.codeWorker),
-      "vision-worker": normalizedRoleAssignment(roles["vision-worker"] ?? roles.visionWorker),
+      "code-worker": normalizedRoleAssignment(
+        roles["code-worker"] ?? roles.codeWorker,
+      ),
+      "vision-worker": normalizedRoleAssignment(
+        roles["vision-worker"] ?? roles.visionWorker,
+      ),
       reviewer: normalizedRoleAssignment(roles.reviewer),
     },
     maxDelegationDepth: clampInteger(settings.maxDelegationDepth, 1, 0, 1),
-    maxFallbacksPerAssignment: clampInteger(settings.maxFallbacksPerAssignment, 1, 0, 1),
+    maxFallbacksPerAssignment: clampInteger(
+      settings.maxFallbacksPerAssignment,
+      1,
+      0,
+      1,
+    ),
     makeRouterDefault:
-      typeof settings.makeRouterDefault === "boolean" ? settings.makeRouterDefault : true,
+      typeof settings.makeRouterDefault === "boolean"
+        ? settings.makeRouterDefault
+        : true,
   };
 }
 
@@ -205,7 +261,8 @@ export function normalizeState(raw) {
     ? state.catalog.filter((model) => model && typeof model.id === "string")
     : [];
 
-  const system = state.system && typeof state.system === "object" ? state.system : {};
+  const system =
+    state.system && typeof state.system === "object" ? state.system : {};
 
   return {
     ...state,
@@ -224,82 +281,125 @@ export function settingsEqual(left, right) {
 
 export function settingsForApi(settings) {
   return {
-    schemaVersion: 2,
-    costPreference: settings.costPreference === "paid-first" ? "paid-first" : "free-first",
-    costPolicy: settings.costPolicy === "known-cost" ? "known-cost" : "free-only",
+    schemaVersion: 3,
+    autoIncludeNewModels: settings.autoIncludeNewModels !== false,
+    costPreference:
+      settings.costPreference === "paid-first" ? "paid-first" : "free-first",
+    costPolicy:
+      settings.costPolicy === "known-cost" ? "known-cost" : "free-only",
     maxDelegationDepth: clampInteger(settings.maxDelegationDepth, 1, 0, 1),
-    maxFallbacksPerAssignment: clampInteger(settings.maxFallbacksPerAssignment, 1, 0, 1),
+    maxFallbacksPerAssignment: clampInteger(
+      settings.maxFallbacksPerAssignment,
+      1,
+      0,
+      1,
+    ),
     makeRouterDefault: settings.makeRouterDefault !== false,
     modelControls: Object.fromEntries(
       Object.entries(settings.modelControls ?? {}).map(([id, control]) => [
         id,
         {
-          enabled: Boolean(control?.enabled),
-          ...(typeof control?.available === "boolean" ? { available: control.available } : {}),
+          selection:
+            control?.selection ??
+            (control?.enabled === true
+              ? "enabled"
+              : control?.enabled === false
+                ? "disabled"
+                : "policy"),
+          ...(typeof control?.available === "boolean"
+            ? { available: control.available }
+            : {}),
         },
       ]),
     ),
     roleAssignments: {
-      orchestrator: normalizedRoleAssignment(settings.roleAssignments?.orchestrator),
-      "code-worker": normalizedRoleAssignment(settings.roleAssignments?.["code-worker"]),
-      "vision-worker": normalizedRoleAssignment(settings.roleAssignments?.["vision-worker"]),
+      orchestrator: normalizedRoleAssignment(
+        settings.roleAssignments?.orchestrator,
+      ),
+      "code-worker": normalizedRoleAssignment(
+        settings.roleAssignments?.["code-worker"],
+      ),
+      "vision-worker": normalizedRoleAssignment(
+        settings.roleAssignments?.["vision-worker"],
+      ),
       reviewer: normalizedRoleAssignment(settings.roleAssignments?.reviewer),
     },
   };
 }
 
-export function toggleEnabledModel(settings, modelId, enabled) {
+export function modelSelection(settings, modelId) {
+  return settings?.modelControls?.[modelId]?.selection ?? "policy";
+}
+
+export function modelIntentEnabled(settings, modelId) {
+  const selection = modelSelection(settings, modelId);
+  return (
+    selection === "enabled" ||
+    (selection === "policy" && settings?.autoIncludeNewModels !== false)
+  );
+}
+
+export function selectModelPolicy(settings, modelId, selection) {
   return {
     ...settings,
     modelControls: {
       ...settings.modelControls,
       [modelId]: {
-        ...(settings.modelControls?.[modelId] ?? {}),
-        enabled,
+        ...settings.modelControls?.[modelId],
+        selection,
       },
     },
   };
 }
 
-export function setCostMode(settings, catalog, mode) {
-  const paid = mode === "paid";
-  const next = {
-    ...settings,
-    costPreference: paid ? "paid-first" : "free-first",
-    costPolicy: paid ? "known-cost" : "free-only",
-    modelControls: Object.fromEntries(
-      Object.entries(settings.modelControls ?? {}).map(([modelId, control]) => {
-        const model = catalog.find((entry) => entry.id === modelId);
-        return [
-          modelId,
-          {
-            ...control,
-            enabled: !paid && model && modelCostClass(model) !== "free"
-              ? false
-              : Boolean(control?.enabled),
-          },
-        ];
-      }),
-    ),
-  };
-  if (!paid) {
-    next.roleAssignments = Object.fromEntries(
-      Object.entries(next.roleAssignments ?? {}).map(([role, modelId]) => {
-        const model = catalog.find((entry) => entry.id === modelId);
-        return [role, model && modelCostClass(model) !== "free" ? "auto" : modelId];
-      }),
-    );
-  }
-  return next;
+export function toggleEnabledModel(settings, modelId, enabled) {
+  return selectModelPolicy(settings, modelId, enabled ? "enabled" : "disabled");
 }
 
-export function catalogRefreshNotice({ incomplete = false, connectionChanged = false } = {}) {
-  const updated = incomplete
-    ? "Available models were updated with a limited OpenCode fallback catalog."
-    : "Available OpenCode models updated.";
-  return connectionChanged
-    ? `${updated} The OpenCode connection was updated. Restart OpenCode to load the changes.`
-    : updated;
+export function setCostMode(settings, _catalog, mode) {
+  return {
+    ...settings,
+    costPreference: mode === "paid" ? "paid-first" : "free-first",
+    costPolicy: mode === "paid" ? "known-cost" : "free-only",
+  };
+}
+
+export function modelEligibilityReasons(
+  model,
+  settings,
+  role,
+  includeIntent = true,
+) {
+  const reasons = [];
+  if (!model)
+    return [
+      "Model unavailable in the catalog; refresh metadata or choose another model.",
+    ];
+  if (!isModelAvailable(model))
+    reasons.push(
+      "Model unavailable; refresh metadata or choose another model.",
+    );
+  if (settings?.modelControls?.[model.id]?.available === false)
+    reasons.push(
+      "Saved availability exclusion; remove it in saved settings before use.",
+    );
+  const cost = modelCostClass(model);
+  if (cost === "unknown")
+    reasons.push(
+      "Unknown or expired pricing; refresh metadata for current verified rates.",
+    );
+  else if (cost === "paid" && settings.costPolicy !== "known-cost")
+    reasons.push(
+      "Free policy blocks paid pricing; choose Paid to allow known charges.",
+    );
+  if (role) reasons.push(...roleCapabilityReasons(model, role));
+  if (includeIntent && !modelIntentEnabled(settings, model.id))
+    reasons.push(
+      modelSelection(settings, model.id) === "disabled"
+        ? "Explicitly disabled; enable or return to policy."
+        : "Automatic inclusion is off; enable explicitly or change the policy.",
+    );
+  return reasons;
 }
 
 export function catalogSummary(catalog, settings) {
@@ -307,8 +407,9 @@ export function catalogSummary(catalog, settings) {
     (summary, model) => {
       summary.total += 1;
       if (isModelAvailable(model)) summary.available += 1;
-      if (settings?.modelControls?.[model.id]?.enabled) summary.enabled += 1;
-      const evidence = model.evidence ?? (model.provisional === true ? true : null);
+      if (modelIntentEnabled(settings, model.id)) summary.enabled += 1;
+      const evidence =
+        model.evidence ?? (model.provisional === true ? true : null);
       if (evidenceMeta(evidence).key === "provisional") {
         summary.unbenchmarked += 1;
       }
@@ -318,22 +419,48 @@ export function catalogSummary(catalog, settings) {
   );
 }
 
-export function roleModelCompatible(model, role) {
-  if (!modelRoles(model).includes(role)) return false;
-  if (role === "orchestrator" && model?.canOrchestrate !== true) return false;
+function roleCapabilityReasons(model, role) {
+  const reasons = [];
+  if (!modelRoles(model).includes(role))
+    reasons.push(`No compatible ${role} role reported; choose another model.`);
+  if (role === "orchestrator" && model?.canOrchestrate !== true)
+    reasons.push(
+      "Orchestration support is not reported; choose a compatible primary.",
+    );
   if (
-    (role === "orchestrator" || role === "code-worker" || role === "vision-worker") &&
-    model?.toolCall === false
-  ) {
-    return false;
-  }
-  if (role === "vision-worker" && model?.toolCall !== true) return false;
-  const requiredAccess = role === "orchestrator" || role === "code-worker" ? "write" : "read";
-  if (!modelAccess(model).includes(requiredAccess)) return false;
-  const modalities = modelInputModalities(model).map((item) => item.toLowerCase());
-  if (!modalities.includes("text")) return false;
-  if (role === "vision-worker" && !modalities.includes("image")) return false;
-  return modelOutputModalities(model).map((item) => item.toLowerCase()).includes("text");
+    ["orchestrator", "code-worker", "vision-worker"].includes(role) &&
+    (model?.toolCall === false ||
+      (role === "vision-worker" && model?.toolCall !== true))
+  )
+    reasons.push(
+      "Required tool support is unsupported or not reported; choose a tool-capable model.",
+    );
+  const access =
+    role === "orchestrator" || role === "code-worker" ? "write" : "read";
+  if (!modelAccess(model).includes(access))
+    reasons.push(
+      `Required ${access} access is not reported; choose a compatible model.`,
+    );
+  const inputs = modelInputModalities(model).map((item) => item.toLowerCase());
+  if (!inputs.includes("text"))
+    reasons.push("Required text input is not reported.");
+  if (
+    role === "vision-worker" &&
+    !inputs.some((item) => ["image", "audio", "video", "pdf"].includes(item))
+  )
+    reasons.push(
+      "No supported media input reported; choose an image, audio, video or PDF model.",
+    );
+  if (
+    !modelOutputModalities(model)
+      .map((item) => item.toLowerCase())
+      .includes("text")
+  )
+    reasons.push("Required text output is not reported.");
+  return reasons;
+}
+export function roleModelCompatible(model, role) {
+  return roleCapabilityReasons(model, role).length === 0;
 }
 
 export function isRoleModelAssignable(model, settings, role) {
@@ -341,7 +468,7 @@ export function isRoleModelAssignable(model, settings, role) {
   return (
     isModelCostAllowed(model, settings) &&
     isModelAvailable(model) &&
-    control?.available === true &&
+    control?.available !== false &&
     roleModelCompatible(model, role)
   );
 }
@@ -349,12 +476,13 @@ export function isRoleModelAssignable(model, settings, role) {
 export function isRoleModelEligible(model, settings, role) {
   return (
     isRoleModelAssignable(model, settings, role) &&
-    settings?.modelControls?.[model?.id]?.enabled === true
+    modelIntentEnabled(settings, model?.id)
   );
 }
 
 export function selectRoleModel(settings, catalog, role, modelId) {
-  if (!ROLE_DEFINITIONS.some((definition) => definition.key === role)) return settings;
+  if (!ROLE_DEFINITIONS.some((definition) => definition.key === role))
+    return settings;
   if (modelId === "auto") {
     return {
       ...settings,
@@ -371,7 +499,7 @@ export function selectRoleModel(settings, catalog, role, modelId) {
       ...settings.modelControls,
       [modelId]: {
         ...settings.modelControls[modelId],
-        enabled: true,
+        selection: "enabled",
       },
     },
     roleAssignments: { ...settings.roleAssignments, [role]: modelId },
@@ -379,8 +507,10 @@ export function selectRoleModel(settings, catalog, role, modelId) {
 }
 
 export function configText(response) {
-  if (typeof response?.text === "string" && response.text.trim()) return response.text;
-  if (response && "config" in response) return JSON.stringify(response.config, null, 2);
+  if (typeof response?.text === "string" && response.text.trim())
+    return response.text;
+  if (response && "config" in response)
+    return JSON.stringify(response.config, null, 2);
   return "";
 }
 
@@ -391,7 +521,9 @@ export function routeModelId(value) {
 }
 
 export function routePlanView(result) {
-  const assignments = Array.isArray(result?.assignments) ? result.assignments : [];
+  const assignments = Array.isArray(result?.assignments)
+    ? result.assignments
+    : [];
   if (assignments.length === 0) {
     return {
       primary: result?.primary ?? null,
@@ -401,7 +533,8 @@ export function routePlanView(result) {
   }
 
   const primaryAssignment =
-    assignments.find((assignment) => assignment?.role === "orchestrator") ?? assignments[0];
+    assignments.find((assignment) => assignment?.role === "orchestrator") ??
+    assignments[0];
   const includesReviewedCode =
     assignments.some((assignment) => assignment?.role === "code-worker") &&
     assignments.some((assignment) => assignment?.role === "reviewer");
