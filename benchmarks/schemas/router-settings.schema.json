@@ -12,56 +12,110 @@
     "maxDelegationDepth",
     "maxFallbacksPerAssignment",
     "makeRouterDefault",
-    "modelControls"
+    "modelControls",
+    "autoIncludeNewModels"
   ],
   "properties": {
-    "schemaVersion": { "const": 2 },
-    "costPreference": { "enum": ["free-first", "paid-first"] },
-    "costPolicy": { "enum": ["free-only", "known-cost"] },
+    "schemaVersion": {
+      "const": 3
+    },
+    "costPreference": {
+      "enum": [
+        "free-first",
+        "paid-first"
+      ]
+    },
+    "costPolicy": {
+      "enum": [
+        "free-only",
+        "known-cost"
+      ]
+    },
     "roleAssignments": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["orchestrator", "code-worker", "vision-worker", "reviewer"],
+      "required": [
+        "orchestrator",
+        "code-worker",
+        "vision-worker",
+        "reviewer"
+      ],
       "properties": {
-        "orchestrator": { "$ref": "#/$defs/assignment" },
-        "code-worker": { "$ref": "#/$defs/assignment" },
-        "vision-worker": { "$ref": "#/$defs/assignment" },
-        "reviewer": { "$ref": "#/$defs/assignment" }
+        "orchestrator": {
+          "$ref": "#/$defs/assignment"
+        },
+        "code-worker": {
+          "$ref": "#/$defs/assignment"
+        },
+        "vision-worker": {
+          "$ref": "#/$defs/assignment"
+        },
+        "reviewer": {
+          "$ref": "#/$defs/assignment"
+        }
       }
     },
-    "maxDelegationDepth": { "type": "integer", "minimum": 0, "maximum": 1 },
+    "maxDelegationDepth": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1
+    },
     "maxFallbacksPerAssignment": {
       "type": "integer",
       "minimum": 0,
       "maximum": 1,
       "description": "Legacy persisted name for the maximum review-driven code repair passes after independent review; it does not enable alternate-model fallback."
     },
-    "makeRouterDefault": { "type": "boolean" },
+    "makeRouterDefault": {
+      "type": "boolean"
+    },
     "modelControls": {
       "type": "object",
-      "minProperties": 1,
-      "propertyNames": { "$ref": "#/$defs/modelId" },
-      "additionalProperties": { "$ref": "#/$defs/control" }
+      "propertyNames": {
+        "$ref": "#/$defs/modelId"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/control"
+      }
+    },
+    "autoIncludeNewModels": {
+      "type": "boolean",
+      "default": true
     }
   },
   "$defs": {
     "assignment": {
       "oneOf": [
-        { "const": "auto" },
-        { "$ref": "#/$defs/modelId" }
+        {
+          "const": "auto"
+        },
+        {
+          "$ref": "#/$defs/modelId"
+        }
       ]
     },
     "modelId": {
       "type": "string",
-      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._:+/-]*$"
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9@~][A-Za-z0-9._:+/@~-]*$",
+      "maxLength": 512
     },
     "control": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["enabled", "available"],
+      "required": [
+        "selection"
+      ],
       "properties": {
-        "enabled": { "type": "boolean" },
-        "available": { "type": "boolean" }
+        "selection": {
+          "enum": [
+            "policy",
+            "enabled",
+            "disabled"
+          ]
+        },
+        "available": {
+          "type": "boolean"
+        }
       }
     }
   }

@@ -50,7 +50,7 @@ test("verbose catalog parser retains only routing-safe facts", () => {
 }`;
   const models = parseOpenCodeVerboseCatalog(output);
 
-  assert.deepEqual(models, [
+  assert.deepEqual(models.map(({api, reportedPricing, capabilities, ...legacy}) => legacy), [
     {
       id: "opencode/mimo-v2.5-free",
       provider: "opencode",
@@ -165,7 +165,7 @@ test("plugin-free fallback is explicit and never presented as a complete catalog
   assert.equal(result.models[0].priceClass, "paid");
 });
 
-test("catalog merge trusts curated free evidence but blocks arbitrary reported zero prices", () => {
+test("catalog merge blocks curated and arbitrary zero prices without public evidence", () => {
   const base = {
     schemaVersion: 1,
     snapshotDate: "2026-08-30",
@@ -216,7 +216,7 @@ test("catalog merge trusts curated free evidence but blocks arbitrary reported z
   ];
 
   const merged = mergeDiscoveredCatalog(base, live, { snapshotDate: "2026-08-30" });
-  assert.equal(merged.models.find((model) => model.id === "opencode/big-pickle").free.verified, true);
+  assert.equal(merged.models.find((model) => model.id === "opencode/big-pickle").free.verified, false);
   assert.equal(merged.models.find((model) => model.id === "custom/reported-zero").free.verified, false);
 });
 
@@ -382,7 +382,7 @@ xai/grok-4.6
     verified: true,
     inputUsdPerMillion: 2,
     outputUsdPerMillion: 6,
-    verifiedAt: "2026-09-01",
+    verifiedAt: new Date().toISOString().slice(0,10),
   });
 
   const draft = createDefaultSettings(catalog);
@@ -393,7 +393,7 @@ xai/grok-4.6
   const settings = validateSettings(draft, catalog);
   const config = buildOpenCodeConfig({ catalog, settings });
 
-  assert.equal(config.agent["omc-code-worker"].model, "xai/grok-4.6");
+  assert.equal(config.agent["omc-code-worker"].model, undefined);
 });
 
 test("discovery reports a stable, secret-free failure", async () => {
@@ -406,4 +406,13 @@ test("discovery reports a stable, secret-free failure", async () => {
   assert.equal(result.installed, false);
   assert.equal(result.error.code, "OPENCODE_NOT_FOUND");
   assert.doesNotMatch(JSON.stringify(result), /secret|credential-like|abc/u);
+});
+
+test('unfamiliar audio-only input with effective tools receives the media role without image requirements',()=>{
+ const parsed=parseOpenCodeVerboseCatalog(`unfamiliar/audio-reader
+ {"name":"Audio reader","status":"active","cost":{"input":1,"output":1},"limit":{"context":100000},"capabilities":{"toolcall":true,"input":{"text":true,"audio":true,"image":false},"output":{"text":true}}}`);
+ const catalog=validateCatalog(mergeDiscoveredCatalog(loadModelCatalog(),parsed));
+ const model=catalog.models.find(m=>m.id==='unfamiliar/audio-reader');
+ assert.equal(model.roles['vision-worker'],25);
+ assert.deepEqual(model.modalities.input,['text','audio']);
 });

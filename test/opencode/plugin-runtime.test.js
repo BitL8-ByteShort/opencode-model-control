@@ -1,3 +1,4 @@
+import { loadModelCatalog, syntheticPricing } from "../fixtures/catalog.js";
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -15,13 +16,17 @@ import {
 } from "../../src/opencode/plugin-runtime.js";
 import {
   createDefaultSettings,
-  loadModelCatalog,
 } from "../../src/core/index.js";
 import * as pluginModule from "../../src/opencode/plugin.js";
 
 function policyFixture() {
   const catalog = loadModelCatalog();
+  for (const m of catalog.models) m.api={id:m.id.split('/').slice(1).join('/'),npm:'@ai-sdk/openai-compatible',url:'https://example.invalid/v1'};
   return { catalog, settings: createDefaultSettings(catalog) };
+}
+
+function hostClient(policy) {
+ return {config:{providers:async()=>({data:{providers:[{id:'opencode',models:Object.fromEntries(policy.catalog.models.map(m=>[m.api.id,{id:m.api.id,providerID:'opencode',api:m.api,capabilities:{toolcall:true,input:Object.fromEntries(m.modalities.input.map(x=>[x,true])),output:{text:true}}}]))}]}})}};
 }
 
 test("the local plugin entry exports only the OpenCode plugin factory", async () => {
@@ -196,7 +201,7 @@ test("only explicit user-authored text can authorize a media write turn", () => 
 
 test("hard-blocks every tool and permission on a media-only turn, then resets next turn", async () => {
   const policy = policyFixture();
-  const hooks = createMediaRoutingHooks({ loadPolicy: async () => policy });
+  const hooks = createMediaRoutingHooks({ loadPolicy: async () => policy, client: hostClient(policy) });
   const input = { sessionID: "session-1", agent: "omc-router" };
   const output = {
     message: {
@@ -239,7 +244,7 @@ test("hard-blocks every tool and permission on a media-only turn, then resets ne
 
 test("cleans up the read-only guard when OpenCode deletes the session", async () => {
   const policy = policyFixture();
-  const hooks = createMediaRoutingHooks({ loadPolicy: async () => policy });
+  const hooks = createMediaRoutingHooks({ loadPolicy: async () => policy, client: hostClient(policy) });
   await hooks["chat.message"](
     { sessionID: "session-deleted", agent: "omc-router" },
     {

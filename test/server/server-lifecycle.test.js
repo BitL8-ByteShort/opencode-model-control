@@ -1,3 +1,4 @@
+import {noPublicMetadataFetch} from "../fixtures/public-metadata.js";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -8,7 +9,7 @@ import { createControlServer } from "../../src/server/app.js";
 test("control server cleanup is safe before listen and remains idempotent", async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "omc-server-lifecycle-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
-  const app = await createControlServer({
+  const app = await createControlServer({ metadataFetch:noPublicMetadataFetch,
     settingsPath: join(directory, "settings.json"),
     discovery: async () => ({
       installed: false,

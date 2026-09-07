@@ -40,7 +40,7 @@ export function json(response, statusCode, payload, extraHeaders = {}) {
   response.end(`${JSON.stringify(payload)}\n`);
 }
 
-export async function readJson(request) {
+export async function readJson(request, { maxBytes = MAX_JSON_BYTES } = {}) {
   const contentType = request.headers["content-type"] ?? "";
   if (!contentType.toLowerCase().startsWith("application/json")) {
     throw Object.assign(new Error("Requests that change settings must use JSON."), {
@@ -53,7 +53,7 @@ export async function readJson(request) {
   const chunks = [];
   for await (const chunk of request) {
     size += chunk.length;
-    if (size > MAX_JSON_BYTES) {
+    if (size > maxBytes) {
       throw Object.assign(new Error("Request payload is too large."), {
         code: "PAYLOAD_TOO_LARGE",
         statusCode: 413,

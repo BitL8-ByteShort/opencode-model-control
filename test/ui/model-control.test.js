@@ -2,13 +2,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  catalogRefreshNotice,
   catalogSummary,
   evidenceMeta,
   isModelFree,
   isRoleModelAssignable,
   isRoleModelEligible,
   modelCostClass,
+  modelIntentEnabled,
   modelAccess,
   modelInputModalities,
   modelRoles,
@@ -87,7 +87,7 @@ test("normalizes API catalog records without invented concept rows", () => {
   assert.deepEqual(normalized.catalog.map((model) => model.id), liveIds);
   assert.equal(normalized.catalog.some((model) => model.id.includes("minicpm")), false);
   assert.equal(normalized.catalog.some((model) => model.id.includes("qwen2.5")), false);
-  assert.equal(normalized.settings.modelControls["opencode/muse-spark-1.2-contributor-free"].enabled, false);
+  assert.equal(normalized.settings.modelControls["opencode/muse-spark-1.2-contributor-free"], undefined);
 });
 
 test("serializes the finalized settings contract without UI aliases", () => {
@@ -101,6 +101,7 @@ test("serializes the finalized settings contract without UI aliases", () => {
   const payload = settingsForApi(normalized.settings);
 
   assert.deepEqual(Object.keys(payload).sort(), [
+    "autoIncludeNewModels",
     "costPolicy",
     "costPreference",
     "makeRouterDefault",
@@ -110,7 +111,7 @@ test("serializes the finalized settings contract without UI aliases", () => {
     "roleAssignments",
     "schemaVersion",
   ]);
-  assert.equal(payload.schemaVersion, 2);
+  assert.equal(payload.schemaVersion, 3);
   assert.equal(payload.costPolicy, "free-only");
   assert.equal(payload.makeRouterDefault, true);
   assert.equal(payload.roleAssignments["vision-worker"], "opencode/mimo-v2.5-free");
@@ -123,8 +124,8 @@ test("model toggles preserve per-model availability and make settings dirty", ()
   const before = normalized.settings;
   const after = toggleEnabledModel(before, "opencode/muse-spark-1.2-contributor-free", true);
 
-  assert.equal(after.modelControls["opencode/muse-spark-1.2-contributor-free"].enabled, true);
-  assert.equal(after.modelControls["opencode/muse-spark-1.2-contributor-free"].available, true);
+  assert.equal(after.modelControls["opencode/muse-spark-1.2-contributor-free"].selection, "enabled");
+  assert.equal(after.modelControls["opencode/muse-spark-1.2-contributor-free"].available, undefined);
   assert.equal(settingsEqual(before, after), false);
   assert.equal(settingsEqual(after, structuredClone(after)), true);
 });
@@ -176,7 +177,7 @@ test("unbenchmarked evidence remains explicit in catalog summaries", () => {
   assert.equal(summary.available, 6);
 });
 
-test("Free and Paid modes map to explicit cost policy and disable paid routes safely", () => {
+test("Free and Paid modes change eligibility while preserving paid intent and pins", () => {
   const paidModel = {
     ...catalog[1],
     id: "openai/paid-code",
@@ -186,7 +187,7 @@ test("Free and Paid modes map to explicit cost policy and disable paid routes sa
   };
   const normalized = normalizeState({ catalog: [...catalog, paidModel], settings: {} });
   const paid = setCostMode(normalized.settings, [...catalog, paidModel], "paid");
-  paid.modelControls[paidModel.id].enabled = true;
+  paid.modelControls[paidModel.id] = {selection: "enabled"};
   paid.roleAssignments["code-worker"] = paidModel.id;
   const free = setCostMode(paid, [...catalog, paidModel], "free");
 
@@ -195,8 +196,8 @@ test("Free and Paid modes map to explicit cost policy and disable paid routes sa
   assert.equal(paid.costPolicy, "known-cost");
   assert.equal(free.costPreference, "free-first");
   assert.equal(free.costPolicy, "free-only");
-  assert.equal(free.modelControls[paidModel.id].enabled, false);
-  assert.equal(free.roleAssignments["code-worker"], "auto");
+  assert.equal(free.modelControls[paidModel.id].selection, "enabled");
+  assert.equal(free.roleAssignments["code-worker"], paidModel.id);
 });
 
 test("explicit role selection opts a compatible known-paid provider model into routing", () => {
@@ -218,16 +219,16 @@ test("explicit role selection opts a compatible known-paid provider model into r
     },
   };
   const allModels = [...catalog, grok];
-  const normalized = normalizeState({ catalog: allModels, settings: {} });
+  const normalized = normalizeState({ catalog: allModels, settings: {autoIncludeNewModels:false} });
   const paid = setCostMode(normalized.settings, allModels, "paid");
 
-  assert.equal(paid.modelControls[grok.id].enabled, false);
+  assert.equal(modelIntentEnabled(paid, grok.id), false);
   assert.equal(isRoleModelAssignable(grok, paid, "code-worker"), true);
   assert.equal(isRoleModelEligible(grok, paid, "code-worker"), false);
 
   const selected = selectRoleModel(paid, allModels, "code-worker", grok.id);
   assert.equal(selected.roleAssignments["code-worker"], grok.id);
-  assert.equal(selected.modelControls[grok.id].enabled, true);
+  assert.equal(selected.modelControls[grok.id].selection, "enabled");
   assert.equal(isRoleModelEligible(grok, selected, "code-worker"), true);
 });
 
@@ -254,7 +255,7 @@ test("role selection keeps cost, availability, capability, and automatic opt-in 
     modalities: { input: ["text"], output: ["image"] },
   };
   const allModels = [...catalog, paid, unknown, unavailable, incompatible];
-  const freeSettings = normalizeState({ catalog: allModels, settings: {} }).settings;
+  const freeSettings = normalizeState({ catalog: allModels, settings: {autoIncludeNewModels:false} }).settings;
   const paidSettings = setCostMode(freeSettings, allModels, "paid");
 
   assert.equal(isRoleModelAssignable(paid, freeSettings, "code-worker"), false);
@@ -264,22 +265,7 @@ test("role selection keeps cost, availability, capability, and automatic opt-in 
 
   const automatic = selectRoleModel(paidSettings, allModels, "code-worker", "auto");
   assert.equal(automatic.roleAssignments["code-worker"], "auto");
-  assert.equal(automatic.modelControls[paid.id].enabled, false);
-});
-
-test("catalog refresh notices require an OpenCode restart when the connection changed", () => {
-  assert.equal(
-    catalogRefreshNotice({ connectionChanged: false }),
-    "Available OpenCode models updated.",
-  );
-  assert.match(
-    catalogRefreshNotice({ connectionChanged: true }),
-    /connection was updated\. Restart OpenCode to load the changes\./u,
-  );
-  assert.match(
-    catalogRefreshNotice({ incomplete: true, connectionChanged: true }),
-    /limited OpenCode fallback catalog.*Restart OpenCode/su,
-  );
+  assert.equal(modelIntentEnabled(automatic, paid.id), false);
 });
 
 test("derives reviewed code repair semantics without displaying legacy model fallbacks", () => {

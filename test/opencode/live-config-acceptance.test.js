@@ -48,9 +48,9 @@ test("the installed OpenCode CLI accepts the generated config without a live con
 
     assert.equal(result.status, 0, result.stderr || result.error?.message);
     const resolved = JSON.parse(result.stdout);
-    assert.equal(resolved.agent?.["omc-router"]?.model, "opencode/big-pickle");
+    assert.equal(resolved.agent?.["omc-router"]?.model, undefined);
     assert.equal(resolved.agent?.["omc-code-worker"]?.mode, "subagent");
-    assert.equal(resolved.agent?.["omc-vision-worker"]?.model, "opencode/mimo-v2.5-free");
+    assert.equal(resolved.agent?.["omc-vision-worker"]?.model, undefined);
     assert.equal(resolved.agent?.["omc-reviewer"]?.mode, "subagent");
     assert.deepEqual(resolved.mcp?.["model-control"]?.command, [
       "opencode-model-control",

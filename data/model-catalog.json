@@ -1,16 +1,64 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "snapshotDate": "2026-08-30",
+  "revision": "a6337f37e74f6eabdf41e407b724df7450b3e547ea8b8af0fc9745a9de2a4dae",
   "models": [
     {
       "id": "opencode/big-pickle",
+      "pricing": {
+        "class": "unknown",
+        "source": null,
+        "rates": {},
+        "reasons": [
+          "legacy-no-source-freshness"
+        ],
+        "digest": null,
+        "fetchedAt": null,
+        "expiresAt": null
+      },
+      "api": {
+        "id": null,
+        "npm": null,
+        "url": null,
+        "urlValid": true
+      },
+      "capabilities": {
+        "effective": {
+          "source": "legacy",
+          "observedAt": null,
+          "toolCall": null,
+          "reasoning": null,
+          "structuredOutput": null,
+          "temperature": null,
+          "attachment": null,
+          "interleaved": null,
+          "reasoningOptions": null,
+          "input": {
+            "text": null,
+            "image": null,
+            "audio": null,
+            "video": null,
+            "pdf": null
+          },
+          "output": {
+            "text": null,
+            "image": null,
+            "audio": null,
+            "video": null,
+            "pdf": null
+          },
+          "contextWindowTokens": null,
+          "inputLimitTokens": null,
+          "outputLimitTokens": null
+        },
+        "supplemental": null
+      },
       "label": "Big Pickle",
       "status": "active",
       "provisional": false,
       "enabledByDefault": true,
       "available": true,
       "contextWindowTokens": 200000,
-      "toolCall": true,
       "free": {
         "verified": true,
         "inputUsdPerMillion": 0,
@@ -18,18 +66,74 @@
         "verifiedAt": "2026-08-30"
       },
       "modalities": {
-        "input": ["text"],
-        "output": ["text"]
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
       },
-      "access": ["read", "write"],
+      "access": [
+        "read",
+        "write"
+      ],
       "canOrchestrate": true,
       "roles": {
         "orchestrator": 100,
         "reviewer": 60
-      }
+      },
+      "toolCall": true
     },
     {
       "id": "opencode/ling-3.0-flash-fin-free",
+      "pricing": {
+        "class": "unknown",
+        "source": null,
+        "rates": {},
+        "reasons": [
+          "legacy-no-source-freshness"
+        ],
+        "digest": null,
+        "fetchedAt": null,
+        "expiresAt": null
+      },
+      "api": {
+        "id": null,
+        "npm": null,
+        "url": null,
+        "urlValid": true
+      },
+      "capabilities": {
+        "effective": {
+          "source": "legacy",
+          "observedAt": null,
+          "toolCall": null,
+          "reasoning": null,
+          "structuredOutput": null,
+          "temperature": null,
+          "attachment": null,
+          "interleaved": null,
+          "reasoningOptions": null,
+          "input": {
+            "text": null,
+            "image": null,
+            "audio": null,
+            "video": null,
+            "pdf": null
+          },
+          "output": {
+            "text": null,
+            "image": null,
+            "audio": null,
+            "video": null,
+            "pdf": null
+          },
+          "contextWindowTokens": null,
+          "inputLimitTokens": null,
+          "outputLimitTokens": null
+        },
+        "supplemental": null
+      },
       "label": "Ling 3.0 Flash Fin Free",
       "status": "active",
       "provisional": false,
@@ -43,10 +147,17 @@
         "verifiedAt": "2026-08-30"
       },
       "modalities": {
-        "input": ["text"],
-        "output": ["text"]
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
       },
-      "access": ["read", "write"],
+      "access": [
+        "read",
+        "write"
+      ],
       "canOrchestrate": true,
       "roles": {
         "orchestrator": 70,
@@ -56,13 +167,60 @@
     },
     {
       "id": "opencode/mimo-v2.5-free",
+      "pricing": {
+        "class": "unknown",
+        "source": null,
+        "rates": {},
+        "reasons": [
+          "legacy-no-source-freshness"
+        ],
+        "digest": null,
+        "fetchedAt": null,
+        "expiresAt": null
+      },
+      "api": {
+        "id": null,
+        "npm": null,
+        "url": null,
+        "urlValid": true
+      },
+      "capabilities": {
+        "effective": {
+          "source": "legacy",
+          "observedAt": null,
+          "toolCall": null,
+          "reasoning": null,
+          "structuredOutput": null,
+          "temperature": null,
+          "attachment": null,
+          "interleaved": null,
+          "reasoningOptions": null,
+          "input": {
+            "text": null,
+            "image": null,
+            "audio": null,
+            "video": null,
+            "pdf": null
+          },
+          "output": {
+            "text": null,
+            "image": null,
+            "audio": null,
+            "video": null,
+            "pdf": null
+          },
+          "contextWindowTokens": null,
+          "inputLimitTokens": null,
+          "outputLimitTokens": null
+        },
+        "supplemental": null
+      },
       "label": "MiMo V2.5 Free",
       "status": "active",
       "provisional": false,
       "enabledByDefault": true,
       "available": true,
       "contextWindowTokens": 200000,
-      "toolCall": true,
       "free": {
         "verified": true,
         "inputUsdPerMillion": 0,
@@ -70,26 +228,84 @@
         "verifiedAt": "2026-08-30"
       },
       "modalities": {
-        "input": ["text", "image", "audio", "video"],
-        "output": ["text"]
+        "input": [
+          "text",
+          "image",
+          "audio",
+          "video"
+        ],
+        "output": [
+          "text"
+        ]
       },
-      "access": ["read", "write"],
+      "access": [
+        "read",
+        "write"
+      ],
       "canOrchestrate": false,
       "roles": {
         "code-worker": 70,
         "vision-worker": 100,
         "reviewer": 75
-      }
+      },
+      "toolCall": true
     },
     {
       "id": "opencode/muse-spark-1.2-contributor-free",
+      "pricing": {
+        "class": "unknown",
+        "source": null,
+        "rates": {},
+        "reasons": [
+          "legacy-no-source-freshness"
+        ],
+        "digest": null,
+        "fetchedAt": null,
+        "expiresAt": null
+      },
+      "api": {
+        "id": null,
+        "npm": null,
+        "url": null,
+        "urlValid": true
+      },
+      "capabilities": {
+        "effective": {
+          "source": "legacy",
+          "observedAt": null,
+          "toolCall": null,
+          "reasoning": null,
+          "structuredOutput": null,
+          "temperature": null,
+          "attachment": null,
+          "interleaved": null,
+          "reasoningOptions": null,
+          "input": {
+            "text": null,
+            "image": null,
+            "audio": null,
+            "video": null,
+            "pdf": null
+          },
+          "output": {
+            "text": null,
+            "image": null,
+            "audio": null,
+            "video": null,
+            "pdf": null
+          },
+          "contextWindowTokens": null,
+          "inputLimitTokens": null,
+          "outputLimitTokens": null
+        },
+        "supplemental": null
+      },
       "label": "Muse Spark 1.2 Contributor Free",
       "status": "provisional",
       "provisional": true,
       "enabledByDefault": false,
       "available": true,
       "contextWindowTokens": 1048576,
-      "toolCall": true,
       "free": {
         "verified": true,
         "inputUsdPerMillion": 0,
@@ -97,20 +313,80 @@
         "verifiedAt": "2026-08-30"
       },
       "modalities": {
-        "input": ["text", "image", "audio", "video", "pdf"],
-        "output": ["text"]
+        "input": [
+          "text",
+          "image",
+          "audio",
+          "video",
+          "pdf"
+        ],
+        "output": [
+          "text"
+        ]
       },
-      "access": ["read", "write"],
+      "access": [
+        "read",
+        "write"
+      ],
       "canOrchestrate": true,
       "roles": {
         "orchestrator": 75,
         "code-worker": 65,
         "vision-worker": 80,
         "reviewer": 85
-      }
+      },
+      "toolCall": true
     },
     {
       "id": "opencode/nemotron-3-ultra-free",
+      "pricing": {
+        "class": "unknown",
+        "source": null,
+        "rates": {},
+        "reasons": [
+          "legacy-no-source-freshness"
+        ],
+        "digest": null,
+        "fetchedAt": null,
+        "expiresAt": null
+      },
+      "api": {
+        "id": null,
+        "npm": null,
+        "url": null,
+        "urlValid": true
+      },
+      "capabilities": {
+        "effective": {
+          "source": "legacy",
+          "observedAt": null,
+          "toolCall": null,
+          "reasoning": null,
+          "structuredOutput": null,
+          "temperature": null,
+          "attachment": null,
+          "interleaved": null,
+          "reasoningOptions": null,
+          "input": {
+            "text": null,
+            "image": null,
+            "audio": null,
+            "video": null,
+            "pdf": null
+          },
+          "output": {
+            "text": null,
+            "image": null,
+            "audio": null,
+            "video": null,
+            "pdf": null
+          },
+          "contextWindowTokens": null,
+          "inputLimitTokens": null,
+          "outputLimitTokens": null
+        },
+        "supplemental": null
+      },
       "label": "Nemotron 3 Ultra Free",
       "status": "active",
       "provisional": false,
@@ -124,10 +400,16 @@
         "verifiedAt": "2026-08-30"
       },
       "modalities": {
-        "input": ["text"],
-        "output": ["text"]
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
       },
-      "access": ["read"],
+      "access": [
+        "read"
+      ],
       "canOrchestrate": false,
       "roles": {
         "reviewer": 100
@@ -135,6 +417,54 @@
     },
     {
       "id": "opencode/nemotron-3.5-lightning-free",
+      "pricing": {
+        "class": "unknown",
+        "source": null,
+        "rates": {},
+        "reasons": [
+          "legacy-no-source-freshness"
+        ],
+        "digest": null,
+        "fetchedAt": null,
+        "expiresAt": null
+      },
+      "api": {
+        "id": null,
+        "npm": null,
+        "url": null,
+        "urlValid": true
+      },
+      "capabilities": {
+        "effective": {
+          "source": "legacy",
+          "observedAt": null,
+          "toolCall": null,
+          "reasoning": null,
+          "structuredOutput": null,
+          "temperature": null,
+          "attachment": null,
+          "interleaved": null,
+          "reasoningOptions": null,
+          "input": {
+            "text": null,
+            "image": null,
+            "audio": null,
+            "video": null,
+            "pdf": null
+          },
+          "output": {
+            "text": null,
+            "image": null,
+            "audio": null,
+            "video": null,
+            "pdf": null
+          },
+          "contextWindowTokens": null,
+          "inputLimitTokens": null,
+          "outputLimitTokens": null
+        },
+        "supplemental": null
+      },
       "label": "Nemotron 3.5 Lightning Free",
       "status": "active",
       "provisional": false,
@@ -148,10 +478,17 @@
         "verifiedAt": "2026-08-30"
       },
       "modalities": {
-        "input": ["text"],
-        "output": ["text"]
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
       },
-      "access": ["read", "write"],
+      "access": [
+        "read",
+        "write"
+      ],
       "canOrchestrate": false,
       "roles": {
         "code-worker": 90,

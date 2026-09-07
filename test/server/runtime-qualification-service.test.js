@@ -1,3 +1,4 @@
+import {noPublicMetadataFetch} from "../fixtures/public-metadata.js";
 import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -56,7 +57,7 @@ test("runtime checks never run automatically and persist only after both confirm
     calls += 1;
     return passingResult(modelId);
   };
-  const service = await new ControlService({
+  const service = await new ControlService({ metadataFetch:noPublicMetadataFetch,
     settingsPath,
     discovery: liveDiscovery(),
     runtimeQualificationRunner: runner,
@@ -88,7 +89,7 @@ test("runtime checks never run automatically and persist only after both confirm
   assert.equal(summary.benchmarkPromotion, false);
   assert.equal(summary.results[0].status, "passed");
 
-  const restarted = await new ControlService({
+  const restarted = await new ControlService({ metadataFetch:noPublicMetadataFetch,
     settingsPath,
     discovery: liveDiscovery(),
     runtimeQualificationRunner: async () => {
@@ -103,7 +104,7 @@ test("runtime checks reject unavailable models and concurrent runs", async (t) =
   t.after(() => rm(directory, { recursive: true, force: true }));
   let release;
   const pending = new Promise((resolve) => { release = resolve; });
-  const service = await new ControlService({
+  const service = await new ControlService({ metadataFetch:noPublicMetadataFetch,
     settingsPath: join(directory, "settings.json"),
     discovery: liveDiscovery(),
     runtimeQualificationRunner: async ({ modelId }) => {
@@ -136,7 +137,7 @@ test("invalid optional runtime history does not prevent the control panel from s
   const historyPath = join(directory, "runtime-qualification-results.json");
   await writeFile(historyPath, "{not-json}\n");
 
-  const service = await new ControlService({
+  const service = await new ControlService({ metadataFetch:noPublicMetadataFetch,
     settingsPath: join(directory, "settings.json"),
     catalogSnapshotPath: join(directory, "catalog.json"),
     runtimeQualificationHistoryPath: historyPath,

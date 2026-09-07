@@ -14,15 +14,18 @@ import type {
 import { captureMutationSession } from "./session-auth.js";
 
 const mutationSession = captureMutationSession();
+export const hasMutationSession = mutationSession !== null;
 const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 export class ApiError extends Error {
   readonly status: number;
+  readonly code: string;
 
-  constructor(message: string, status = 0) {
+  constructor(message: string, status = 0, code = "") {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    this.code = code;
   }
 }
 
@@ -60,7 +63,7 @@ async function requestJson<T>(path: string, init: RequestInit = {}): Promise<T> 
   if (!response.ok) {
     const errorBody =
       body && typeof body === "object" && "error" in body && body.error && typeof body.error === "object"
-        ? body.error as { code?: unknown; message?: unknown }
+        ? body.error as { code?: unknown; message?: unknown; reasons?: unknown }
         : null;
     const detail =
       errorBody
@@ -70,7 +73,8 @@ async function requestJson<T>(path: string, init: RequestInit = {}): Promise<T> 
         : typeof body === "string" && body.trim()
           ? body.trim()
           : `Request failed with status ${response.status}.`;
-    throw new ApiError(detail, response.status);
+    const reasons = Array.isArray(errorBody?.reasons) ? errorBody.reasons.slice(0, 8).filter((reason): reason is string => typeof reason === "string").map(reason => reason.slice(0, 300)).join(" ") : "";
+    throw new ApiError([detail, reasons].filter(Boolean).join(" "), response.status, typeof errorBody?.code === "string" ? errorBody.code : "");
   }
 
   return body as T;
@@ -80,10 +84,10 @@ export function getState(signal?: AbortSignal): Promise<ModelControlState> {
   return requestJson<ModelControlState>("/api/state", { signal });
 }
 
-export function updateSettings(settings: RouterSettings): Promise<ModelControlState> {
+export function updateSettings(settings: RouterSettings, expectedSettingsRevision: string, catalogRevision: string): Promise<ModelControlState> {
   return requestJson<ModelControlState>("/api/settings", {
     method: "PUT",
-    body: JSON.stringify(settings),
+    body: JSON.stringify({settings, expectedSettingsRevision, catalogRevision}),
   });
 }
 

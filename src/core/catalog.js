@@ -1,3 +1,5 @@
+import { classifyPricingEvidence, unknownPricing, normalizeApiIdentity, capabilityDetails, digestJson } from "./pricing.js";
+import { pricingSchema, capabilityDetailsSchema } from "./catalog-evidence.js";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
@@ -12,7 +14,7 @@ import {
 import { routerError } from "./errors.js";
 import { isPlainObject, uniqueStrings } from "./utils.js";
 
-const MODEL_ID_PATTERN = /^[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._:+/-]*$/i;
+const MODEL_ID_PATTERN = /^[a-z0-9][a-z0-9._-]*\/[a-z0-9@~][a-z0-9._:+/@~-]*$/i;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const CATALOG_STATUSES = Object.freeze(["active", "provisional"]);
 const EVIDENCE_STATUSES = Object.freeze([
@@ -163,7 +165,7 @@ function normalizeModel(value) {
   if (roles.orchestrator !== undefined && !value.canOrchestrate) {
     invalidCatalog(`Model ${id} cannot hold its declared orchestrator role.`);
   }
-  if (roles["vision-worker"] !== undefined && !input.includes("image")) {
+  if (roles["vision-worker"] !== undefined && !["image", "audio", "video", "pdf"].some((modality) => input.includes(modality))) {
     invalidCatalog(`Model ${id} cannot hold its declared vision role.`);
   }
   if (roles["code-worker"] !== undefined && !access.includes("write")) {
@@ -179,8 +181,18 @@ function normalizeModel(value) {
   const evidence = normalizeEvidence(value.evidence, id);
   const quality = normalizeQuality(value.quality, id);
 
+  let pricing, capabilities;
+  try {
+    pricing = pricingSchema.parse(value.pricing ?? unknownPricing('legacy-no-source-freshness'));
+    capabilities = capabilityDetailsSchema.parse(value.capabilities ?? {
+      effective: capabilityDetails({}, 'legacy', null), supplemental: null,
+    });
+  } catch { invalidCatalog(`Model ${id} has invalid pricing or capability evidence.`); }
   return {
     id,
+    pricing,
+    api: normalizeApiIdentity(value.api),
+    capabilities,
     label: value.label.trim(),
     status: value.status,
     provisional: value.provisional,
@@ -220,7 +232,7 @@ function compareCatalogOrder(left, right) {
 }
 
 export function validateCatalog(value) {
-  if (!isPlainObject(value) || value.schemaVersion !== CURRENT_CATALOG_VERSION) {
+  if (!isPlainObject(value) || ![1, CURRENT_CATALOG_VERSION].includes(value.schemaVersion)) {
     invalidCatalog("Catalog schema version is unsupported.");
   }
   if (typeof value.snapshotDate !== "string" || !DATE_PATTERN.test(value.snapshotDate)) {
@@ -236,6 +248,7 @@ export function validateCatalog(value) {
   return {
     schemaVersion: CURRENT_CATALOG_VERSION,
     snapshotDate: value.snapshotDate,
+    revision: digestJson(models),
     models,
   };
 }
@@ -281,23 +294,8 @@ export function isVerifiedFree(model) {
   return classifyModelPricing(model) === "free";
 }
 
-export function classifyModelPricing(model) {
-  const pricing = model?.free;
-  if (
-    pricing?.verified !== true ||
-    typeof pricing.inputUsdPerMillion !== "number" ||
-    !Number.isFinite(pricing.inputUsdPerMillion) ||
-    pricing.inputUsdPerMillion < 0 ||
-    typeof pricing.outputUsdPerMillion !== "number" ||
-    !Number.isFinite(pricing.outputUsdPerMillion) ||
-    pricing.outputUsdPerMillion < 0
-  ) {
-    return "unknown";
-  }
-  return pricing.inputUsdPerMillion === 0 &&
-    pricing.outputUsdPerMillion === 0
-    ? "free"
-    : "paid";
+export function classifyModelPricing(model, options) {
+  return classifyPricingEvidence(model?.pricing, options);
 }
 
 export function modelSupports({ model, role, modalities, access }) {
@@ -387,12 +385,19 @@ export function eligibleModelsForRole({
         pricingClass !== "unknown" &&
         (costPolicy === "known-cost" || pricingClass === "free") &&
         model.available === true &&
-        control?.enabled === true &&
-        control?.available === true &&
+        modelEnabled(settings, model.id) &&
+        control?.available !== false &&
         modelSupports({ model, role, modalities, access })
       );
     })
     .sort((left, right) =>
       compareEligibleModels(left, right, role, costPreference),
     );
+}
+
+// Intent is independent of runtime eligibility; missing identities follow policy.
+export function modelEnabled(settings, modelId) {
+  const control = settings?.modelControls?.[modelId];
+  const selection = typeof control?.enabled === "boolean" ? (control.enabled ? "enabled" : "disabled") : control?.selection ?? "policy";
+  return selection === "enabled" || (selection === "policy" && settings?.autoIncludeNewModels !== false);
 }

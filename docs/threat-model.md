@@ -2,7 +2,7 @@
 
 ## Scope
 
-This model covers the local control panel, settings, OpenCode CLI discovery, model routing policy, generated config, guarded config connection, local media-routing plugin, local MCP subprocess, usage aggregation, and manual runtime access checks. It does not treat OpenCode, OpenCode Zen, OpenRouter, another provider, or the browser as trusted merely because they participate in the workflow.
+This model covers the local control panel, settings, OpenCode CLI discovery, model routing policy, generated config, guarded config connection, local owned-role routing plugin, local MCP subprocess, usage aggregation, and manual runtime access checks. It does not treat OpenCode, OpenCode Zen, OpenRouter, another provider, or the browser as trusted merely because they participate in the workflow.
 
 ## Assets
 
@@ -25,6 +25,8 @@ This model covers the local control panel, settings, OpenCode CLI discovery, mod
 7. Control service to OpenCode's local accounting database command.
 8. OpenCode's local message hook to the selected provider model.
 9. Explicit runtime access check to OpenCode and the selected provider.
+10. Control service to the fixed public Models.dev endpoint and private metadata cache.
+11. Concurrent panel/MCP/plugin processes to shared saved intent, catalog, and host-loaded inventory.
 
 ## Threats and controls
 
@@ -45,15 +47,15 @@ This model covers the local control panel, settings, OpenCode CLI discovery, mod
 | Missing or incompatible usage accounting appears as zero | Misleading cost/token history | Distinguish a compatible empty database from command/schema failures; reject malformed, negative, nonnumeric, or structurally incompatible accounting. |
 | Plugin discovery stall | UI delay or missing catalog | Bound the process, retry plugin-free, label the snapshot incomplete, and retain the last usable catalog. |
 | Upstream discovery normalizes project config | A non-routing `$schema` line appears outside the connector receipt | Disclose the observed OpenCode behavior; never claim or remove the upstream-owned field during Disconnect. Connector-owned entries still use guarded path-level writes. |
-| Malicious catalog metadata | Misrouting or misleading output | Validate provider/model IDs, modalities, costs, roles, status, and sizes; new records stay routing-disabled. |
-| Ambiguous price reported as zero | Unexpected charges | Do not trust arbitrary CLI zero as free; require independent exact-zero evidence or a verified positive price. Unknown is always blocked. |
-| Paid preference enabled accidentally | Provider charges | Explicit Free/Paid user control, visible paid warnings, explicit model enablement, and no unknown-cost fallback. |
+| Malicious catalog metadata | Misrouting or misleading output | Validate exact provider/model/API identity, capabilities, all supported billing dimensions, status, and bounds. Public capabilities cannot expand OpenCode effective restrictions. Policy inclusion obeys saved cost policy and explicit disables. |
+| Ambiguous price reported as zero | Unexpected charges | Require complete valid rates across input/output and every supported supplied billing dimension. Exact API identity, source digest and successful freshness are required for public evidence; arbitrary CLI zeros and bundled history cannot grant free. With complete valid evidence, any positive rate means paid; malformed/conflicting/expired evidence is unknown and blocked. |
+| Paid preference enabled accidentally | Provider charges | Explicit saved Free/Paid choice and visible paid warnings. Auto-include defaults on: saved Paid authorizes future eligible known-paid models; explicit disables win and unknown-cost fallback is forbidden. |
 | Prompt injection in user content | Unsafe delegation or false claims | Keep authority in OpenCode, use bounded specialist prompts, and require separate authorization for consequential actions. Routing is not a sandbox. |
 | MCP bridge overreach or recursion | Repeated delegation or enlarged tool authority | Expose bounded tools only to the primary; honor `direct` as stop; deny bridge tools and task delegation to specialists. |
 | Media reaches a text-only, tool-incapable, or policy-blocked model | Failed input handling, fabricated analysis, or unexpected cost | On media turns entering through `omc-router`, require every modality plus text-output and tool-call capability, reload the saved policy, select the compatible vision model before dispatch, and fail closed when no safe candidate exists. |
 | Attachment prompt injection grants tool or workspace authority | Unauthorized delegation, command execution, or file mutation | Treat attachment content as untrusted in a fixed system instruction. Only bounded nonsynthetic/nonignored user text outside attachments can authorize the code lane; otherwise change to the tool-free vision worker and deny both permission requests and tool execution until the next turn. |
 | Media authorization classification leaks user content | Disclosure of user text or attachments | Read at most 4,000 characters of explicit user-authored text only for local write-intent classification; never log, store, or separately transmit it. Never read attachment content, filenames, URLs, data URLs, or payloads; the chosen provider remains a separate disclosed inference boundary. |
-| Automatic code workflow loops, trusts its own output, or gives review mutation authority | Excessive calls or unreviewed defects | Require policy selection, code-worker implementation, an independent read-only reviewer with no shell/edit/write permission, at most one review-driven repair, and non-recursive specialists; disclose that the cycle ceiling is prompt-level. |
+| Automatic code workflow loops, trusts its own output, or gives review mutation authority | Excessive calls or unreviewed defects | Require policy selection, code-worker implementation, an independent read-only reviewer with no shell/edit/write permission, at most one review-driven repair, and non-recursive specialists. Recheck saved bounds and exact worker/reviewer/message evidence in runtime guards; synthesis and task decomposition remain model-guided. |
 | Provider/model identity changes | Misrouting or unexpected terms | Refresh exact IDs, separate availability from one-off runtime access, and keep quality evidence versioned. |
 | Sensitive data sent to a provider | Confidentiality loss | Do not equate local control or free pricing with local inference/private processing; do not request, extract, log, or transmit provider secret material. The runtime isolation guard may inspect credential-type metadata locally without copying secret fields. |
 | Runtime check runs unexpectedly or is mistaken for quality evidence | Charges, provider disclosure, or misleading claims | Never run automatically; require two explicit acknowledgements, use one bounded isolated OpenCode run with a fixed synthetic prompt, disclose that OpenCode may retry and each provider attempt can incur quota/cost/retention, discard raw output, store redacted metadata, and prevent results from promoting benchmark status. |
@@ -63,6 +65,14 @@ This model covers the local control panel, settings, OpenCode CLI discovery, mod
 | Dependency compromise | Local code execution | Keep dependencies minimal and pinned, commit the lockfile, review updates, and run release verification/audit. |
 | Denial of service | Unavailable UI or discovery | Bound request bodies, child-process time, and output; avoid retry storms and surface stale/incomplete status. |
 
+## Metadata, concurrency, and runtime guards
+
+- Models.dev requests use the fixed HTTPS endpoint, omit credentials, reject redirects, cap time/bytes, and never follow metadata URLs. The request sends no local selections, prompts, usage, config, or credentials. Ordinary network metadata remains visible to that public service.
+- Conditional 200/304 success renews the 24-hour evidence lifetime; failure advances attempt status only. The 15-minute scheduler and shared refresh lease avoid duplicate periodic work. Refresh retains intent and never grants a bundled or expired free label fresh authority.
+- Private v3 intent separates policy/enabled/disabled from effective eligibility. Cross-process locks and settings compare-and-swap prevent lost updates; catalog-only rebasing revalidates newly edited choices. Migration backs up exact old bytes before atomic replacement and preserves disables and absent pins. Missing/corrupt state blocks dispatch.
+- Every owned message is bound to a saved route. Pre-inference checks repeat policy, host inventory, API/endpoint/transport, effective capabilities and rates; a changed or missing explicit model blocks. Unrelated agents are outside that routing authority. Missing-host reload guidance is emitted to the same directory's TUI/event stream; HTTP errors can remain generic, and no automatic host disposal occurs.
+- Repair authority binds the completed worker, matching reviewer, parent workflow and exact child message. It is consumed once and revalidated for revocation; background acknowledgment alone cannot authorize it. Owned slash synthetic summaries require exact message/session/model/content and matching child evidence; a changed parent pin blocks the stale summary. No generic synthetic-message bypass or restart-durable workflow authority exists.
+
 ## Security non-goals
 
 - The per-process mutation token is not user identity or a hardened remote/multi-user authentication system.
@@ -70,7 +80,7 @@ This model covers the local control panel, settings, OpenCode CLI discovery, mod
 - Connection status is not proof that a model provider can be invoked.
 - Model output is not trusted code, and routing does not make tool execution safe.
 - The project cannot guarantee provider privacy, uptime, pricing, retention, or entitlements.
-- Prompt instructions do not enforce delegation and repair counts as strongly as a dedicated host runtime counter.
+- Runtime workflow guards reduce repeated delegation but do not prove model correctness, contain arbitrary tool execution, or persist workflow authority across a host restart.
 - Backups and receipts protect against product mistakes, not a compromised local account.
 
 ## Residual risk

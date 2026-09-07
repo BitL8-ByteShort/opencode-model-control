@@ -286,10 +286,14 @@ test("status and uninstall fail closed after a managed entry changes", async (t)
 });
 
 test("a receipt never authorizes replacement of a newly added unmanaged product key", async (t) => {
-  const { configPath, installer } = await fixture(t, { source: "{}\n" });
+  const { configPath, installer, receiptPath } = await fixture(t, { source: "{}\n" });
   await installer.install({
     settings: { roleAssignments: { reviewer: "" } },
   });
+  // Simulate a v1 receipt which never owned the omitted reviewer.
+  const receipt = JSON.parse(await readFile(receiptPath, "utf8"));
+  receipt.entries = receipt.entries.filter(({path}) => path.join(".") !== "agent.omc-reviewer");
+  await writeFile(receiptPath, JSON.stringify(receipt));
   const installed = parseJsoncDocument(await readFile(configPath, "utf8")).value;
   installed.agent["omc-reviewer"] = { mode: "subagent", model: "someone/else" };
   await writeFile(configPath, `${JSON.stringify(installed, null, 2)}\n`);
@@ -417,7 +421,7 @@ test("an existing v0.1.2 receipt upgrades without claiming user-owned values", a
   assert.equal(upgraded.plugin.length, 1);
   assert.ok(upgradedReceipt.entries.some(({ path }) => path.join(".") === "plugin"));
   assert.ok(upgradedReceipt.entries.some(({ path }) => path.join(".") === "default_agent"));
-  assert.equal(upgradedReceipt.managedSurfaceVersion, 1);
+  assert.equal(upgradedReceipt.managedSurfaceVersion, 2);
 });
 
 test("a new package instance requires and safely applies an update from older valid package paths", async (t) => {
@@ -494,7 +498,7 @@ test("a new package instance requires and safely applies an update from older va
   assert.deepEqual(updated.plugin, ["user-plugin", currentPluginUrl]);
   assert.equal(updated.plugin.includes(oldPluginUrl), false);
   assert.equal(updated.default_agent, "user-primary");
-  assert.equal(receipt.managedSurfaceVersion, 1);
+  assert.equal(receipt.managedSurfaceVersion, 2);
   assert.deepEqual(
     receipt.entries.find(({ path }) => path.join(".") === "mcp.model-control").value.command,
     currentCommand,
@@ -762,4 +766,12 @@ test("global target follows OpenCode precedence and prefers an existing JSONC fi
   });
 
   assert.equal((await installer.status()).configPath, jsoncPath);
+});
+
+ test("ordinary policy updates leave the installed managed config unchanged", async (t) => {
+  const { installer, configPath } = await fixture(t, { source: "{}\n" });
+  await installer.install();
+  const before = await readFile(configPath, "utf8");
+  await installer.install({settings:{maxDelegationDepth:0,maxFallbacksPerAssignment:0,roleAssignments:{orchestrator:"custom/new",reviewer:""}}});
+  assert.equal(await readFile(configPath,"utf8"), before);
 });

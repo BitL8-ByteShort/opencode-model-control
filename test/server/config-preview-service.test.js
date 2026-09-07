@@ -1,3 +1,4 @@
+import {publicMetadataFetch,liveModel} from "../fixtures/public-metadata.js";
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -17,7 +18,7 @@ function liveDiscovery() {
     complete: true,
     availableIds: catalog.models.map(({ id }) => id),
     models: catalog.models.map((model) => ({
-      id: model.id,
+      ...liveModel(model.id),
       status: "active",
       free: true,
       inputCostVerified: true,
@@ -30,7 +31,7 @@ function liveDiscovery() {
 test("generated preview includes the complete managed plugin and default-agent surface", async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "omc-config-preview-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
-  const service = await new ControlService({
+  const service = await new ControlService({ metadataFetch:publicMetadataFetch,
     settingsPath: join(directory, "settings.json"),
     discovery: liveDiscovery(),
   }).initialize();
@@ -47,13 +48,13 @@ test("generated preview includes the complete managed plugin and default-agent s
 test("generated preview omits the default agent when the saved preference is disabled", async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "omc-config-preview-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
-  const service = await new ControlService({
+  const service = await new ControlService({ metadataFetch:publicMetadataFetch,
     settingsPath: join(directory, "settings.json"),
     discovery: liveDiscovery(),
   }).initialize();
   const settings = structuredClone(service.getState().settings);
   settings.makeRouterDefault = false;
-  await service.updateSettings(settings);
+  await service.updateSettings(settings, {expectedSettingsRevision:service.getState().settingsRevision});
 
   const preview = service.getOpenCodeConfig();
 

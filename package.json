@@ -1,6 +1,6 @@
 {
   "name": "opencode-model-control",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "A local model routing control panel and MCP companion for OpenCode.",
   "keywords": [
     "opencode",
@@ -36,6 +36,7 @@
     "data",
     "dist",
     "docs",
+    "!docs/plans",
     "!docs/assets/opencode-model-control-banner.png",
     "!docs/assets/control-panel-concept.png",
     "examples",
@@ -55,10 +56,15 @@
     "prepack": "npm run verify",
     "start": "node bin/opencode-model-control.js",
     "test": "node --test",
-    "verify": "npm run check && npm test && npm run build"
+    "verify": "npm run check && npm test && npm run build",
+    "test:browser": "node --import ./scripts/browser/environment.mjs ./node_modules/@playwright/test/cli.js test --config scripts/browser/playwright.config.mjs",
+    "test:host": "node scripts/host-acceptance.mjs",
+    "test:package": "node scripts/package-acceptance.mjs",
+    "test:metadata": "node scripts/metadata-smoke.mjs"
   },
   "devDependencies": {
     "@modelcontextprotocol/client": "2.0.0",
+    "@playwright/test": "1.58.2",
     "@types/node": "26.4.0",
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.5",

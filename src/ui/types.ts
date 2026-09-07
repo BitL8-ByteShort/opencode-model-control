@@ -37,7 +37,10 @@ export interface CatalogModel {
         [key: string]: unknown;
       };
   inputModalities?: string[];
-  capabilities?: string[];
+  capabilities?: {effective: CapabilityDetails; supplemental: CapabilityDetails | null};
+  roleCapabilities?: string[];
+  pricingClass?: "free" | "paid" | "unknown";
+  pricing?: {source?: string; fetchedAt?: string | null; expiresAt?: string | null; reasons?: string[]};
   access?: string | string[];
   canOrchestrate?: boolean;
   roles?: string[] | Record<string, number | boolean | undefined>;
@@ -56,7 +59,7 @@ export interface RoleAssignments {
 }
 
 export interface ModelControl {
-  enabled: boolean;
+  selection: "policy" | "enabled" | "disabled";
   available?: boolean;
 }
 
@@ -65,6 +68,7 @@ export interface RouterSettings {
   costPreference: "free-first" | "paid-first";
   costPolicy: "free-only" | "known-cost";
   freeOnly?: boolean;
+  autoIncludeNewModels: boolean;
   roleAssignments: RoleAssignments;
   modelControls: Record<string, ModelControl>;
   maxDelegationDepth: number;
@@ -89,6 +93,11 @@ export interface SystemState {
   catalog?: {
     source?: string;
     lastRefreshed?: string;
+    attemptedAt?: string;
+    succeededAt?: string;
+    discoverySucceededAt?: string;
+    pricingSucceededAt?: string;
+    status?: string;
     stale?: boolean;
     complete?: boolean;
     warning?: string | null;
@@ -100,6 +109,10 @@ export interface ModelControlState {
   system?: SystemState;
   catalog: CatalogModel[];
   settings: RouterSettings;
+  settingsRevision: string;
+  catalogRevision: string;
+  blockedRoles?: Record<string, string[]>;
+  rebased?: boolean;
 }
 
 export interface RouteResponse {
@@ -266,4 +279,29 @@ export interface OpenCodeUsage {
     latestMessageAt: string | null;
   };
   caveats: string[];
+}
+
+export interface CapabilityDetails {
+  source: string;
+  observedAt: string | null;
+  input: Record<string, boolean | null>;
+  output: Record<string, boolean | null>;
+  toolCall: boolean | null;
+  reasoning: boolean | null;
+  structuredOutput: boolean | null;
+  temperature: boolean | null;
+  attachment: boolean | null;
+  interleaved: boolean | {field: string} | null;
+  reasoningOptions?: unknown;
+  contextWindowTokens: number | null;
+  inputLimitTokens: number | null;
+  outputLimitTokens: number | null;
+}
+export interface EditorState {
+  state: ModelControlState;
+  baseline: RouterSettings;
+  draft: RouterSettings;
+  baselineRevision: string;
+  requestId: number;
+  saving: {requestId: number; submitted: RouterSettings} | null;
 }

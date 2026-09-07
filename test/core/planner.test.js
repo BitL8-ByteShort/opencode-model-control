@@ -1,12 +1,14 @@
+import { loadModelCatalog, syntheticPricing } from "../fixtures/catalog.js";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
   createDefaultSettings,
-  loadModelCatalog,
-  planRoute,
+  planRoute as corePlanRoute,
 } from "../../src/core/index.js";
+
+const planRoute = options => corePlanRoute({catalog:loadModelCatalog(), ...options});
 
 const fixtureUrl = new URL(
   "../../benchmarks/fixtures/routing-cases.json",
@@ -20,6 +22,7 @@ function paidCodeModel(id, overrides = {}) {
     ...source,
     id,
     label: id,
+    pricing: syntheticPricing({verified:true,inputUsdPerMillion:0.25,outputUsdPerMillion:1}),
     free: {
       verified: true,
       inputUsdPerMillion: 0.25,
@@ -141,6 +144,7 @@ test("a compatible provisional model is used only after explicit enablement", ()
   const settings = createDefaultSettings(catalog);
   settings.roleAssignments["vision-worker"] = "auto";
   settings.modelControls["opencode/mimo-v2.5-free"].available = false;
+  settings.modelControls["opencode/muse-spark-1.2-contributor-free"]={selection:"disabled"};
 
   assert.throws(
     () =>

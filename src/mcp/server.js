@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/server";
 import * as z from "zod/v4";
 
 import { ControlService } from "../server/service.js";
+import { classifyModelPricing } from "../core/index.js";
 import { PACKAGE_VERSION } from "../version.js";
 
 const MODALITIES = ["text", "image", "audio", "video", "pdf"];
@@ -35,7 +36,8 @@ function toolResult(payload, { isError = false } = {}) {
 
 function agentForRole(role) {
   if (role === "orchestrator") return "omc-router";
-  if (["code-worker", "vision-worker", "reviewer"].includes(role)) return `omc-${role}`;
+  if (["code-worker", "vision-worker", "reviewer"].includes(role))
+    return `omc-${role}`;
   return null;
 }
 
@@ -43,6 +45,9 @@ function compactRoute(result) {
   const { description: _description, ...task } = result.task;
   return {
     schemaVersion: result.schemaVersion,
+    settingsRevision: result.settingsRevision,
+    catalogRevision: result.catalogRevision,
+    policy: result.policy,
     route: result.route,
     task,
     assignments: (result.assignments ?? []).map((assignment) => ({
@@ -61,17 +66,40 @@ function compactStatus(state) {
   const costPolicy = state.settings.costPolicy;
   return {
     schemaVersion: state.schemaVersion,
+    settingsRevision: state.settingsRevision,
+    catalogRevision: state.catalogRevision,
+    blockedRoles: state.blockedRoles,
     policy: {
       localOnly: true,
       freeOnly: costPolicy === "free-only",
       costPolicy,
       costPreference: state.settings.costPreference,
       maxDelegationDepth: state.settings.maxDelegationDepth,
+      maxFallbacksPerAssignment: state.settings.maxFallbacksPerAssignment,
+      autoIncludeNewModels: state.settings.autoIncludeNewModels,
+      recursiveDelegation: false,
     },
     openCode: {
-      installed: state.system?.openCode?.installed ?? false,
-      version: state.system?.openCode?.version ?? null,
+      installed:
+        state.system?.catalog?.installed ??
+        state.system?.openCode?.installed ??
+        false,
+      version:
+        state.system?.catalog?.version ??
+        state.system?.openCode?.version ??
+        null,
       checkedAt: state.system?.openCode?.checkedAt ?? null,
+      checkedAtSource: "process-local-discovery",
+    },
+    catalog: {
+      attemptedAt: state.system?.catalog?.attemptedAt ?? null,
+      succeededAt: state.system?.catalog?.succeededAt ?? null,
+      discoverySucceededAt: state.system?.catalog?.discoverySucceededAt ?? null,
+      pricingSucceededAt: state.system?.catalog?.pricingSucceededAt ?? null,
+      status: state.system?.catalog?.status ?? null,
+      complete: state.system?.catalog?.complete === true,
+      stale: state.system?.catalog?.stale !== false,
+      warning: state.system?.catalog?.warning ?? null,
     },
     roleAssignments: state.settings.roleAssignments,
     models: state.catalog.map((model) => ({
@@ -79,13 +107,12 @@ function compactStatus(state) {
       label: model.label,
       enabled: model.enabled === true,
       available: model.available === true,
-      pricingClass:
-        model.free?.verified !== true
-          ? "unknown"
-          : model.free.inputUsdPerMillion === 0 && model.free.outputUsdPerMillion === 0
-            ? "free"
-            : "paid",
-      inputModalities: model.modalities?.input ?? model.inputModalities ?? ["text"],
+      selection: model.selection ?? "policy",
+      effectiveEnabled: model.effectiveEnabled === true,
+      blockedReasons: model.blockedReasons ?? [],
+      pricingClass: classifyModelPricing(model),
+      inputModalities: model.modalities?.input ??
+        model.inputModalities ?? ["text"],
       evidence: model.evidence?.status ?? "unverified",
     })),
   };
@@ -132,7 +159,12 @@ export async function createModelControlMcpServer({ service } = {}) {
       description:
         "Return a deterministic delegation decision using the current capability and cost controls. This recommends an OpenCode agent; it never calls a model or changes files.",
       inputSchema: z.object({
-        task: z.string().trim().min(1).max(4_000).describe("Concise task description without secrets"),
+        task: z
+          .string()
+          .trim()
+          .min(1)
+          .max(4_000)
+          .describe("Concise task description without secrets"),
         modality: z.enum(MODALITIES).default("text"),
       }),
       annotations: {
@@ -145,12 +177,25 @@ export async function createModelControlMcpServer({ service } = {}) {
     async ({ task, modality }) => {
       try {
         await controlService.reloadSettings();
-        return toolResult(compactRoute(controlService.route({ task, modality })));
+        return toolResult(
+          compactRoute(controlService.route({ task, modality })),
+        );
       } catch (error) {
         return toolResult({ error: stableError(error) }, { isError: true });
       }
     },
   );
 
+  const originalClose = server.close.bind(server);
+  server.close = async () => {
+    await controlService.close?.();
+    await originalClose();
+  };
+  const previousOnClose = server.server?.onclose;
+  if (server.server)
+    server.server.onclose = () => {
+      previousOnClose?.();
+      void controlService.close?.();
+    };
   return server;
 }

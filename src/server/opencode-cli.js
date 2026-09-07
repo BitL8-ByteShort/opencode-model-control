@@ -1,11 +1,35 @@
+import {
+  analyzeRates,
+  capabilityDetails,
+  classifyPricingEvidence,
+  digestJson,
+  normalizeApiIdentity,
+  PRICING_TTL_MS,
+  resolveModelEvidence,
+  splitModelId,
+  unknownPricing,
+} from "../core/pricing.js";
+import { validateCatalog } from "../core/catalog.js";
 import { execFile as nodeExecFile } from "node:child_process";
 
-const MODEL_ID_PATTERN = /^[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._:+/-]*$/i;
+const MODEL_ID_PATTERN = /^[a-z0-9][a-z0-9._-]*\/[a-z0-9@~][a-z0-9._:+/@~-]*$/i;
 const DEFAULT_TIMEOUT_MS = 8_000;
 const REFRESH_TIMEOUT_MS = 25_000;
 const MAX_OUTPUT_BYTES = 32 * 1024 * 1024;
-const INPUT_MODALITIES = Object.freeze(["text", "audio", "image", "video", "pdf"]);
-const OUTPUT_MODALITIES = Object.freeze(["text", "audio", "image", "video", "pdf"]);
+const INPUT_MODALITIES = Object.freeze([
+  "text",
+  "audio",
+  "image",
+  "video",
+  "pdf",
+]);
+const OUTPUT_MODALITIES = Object.freeze([
+  "text",
+  "audio",
+  "image",
+  "video",
+  "pdf",
+]);
 
 function execute(file, args, options, execFile = nodeExecFile) {
   return new Promise((resolve, reject) => {
@@ -62,7 +86,10 @@ function readJsonObject(lines, startIndex) {
   throw new Error("Incomplete model metadata object.");
 }
 
-export function parseOpenCodeVerboseCatalog(stdout) {
+export function parseOpenCodeVerboseCatalog(
+  stdout,
+  { observedAt = new Date().toISOString() } = {},
+) {
   const lines = String(stdout).split(/\r?\n/u);
   const models = [];
 
@@ -75,23 +102,37 @@ export function parseOpenCodeVerboseCatalog(stdout) {
       const output = value?.capabilities?.output ?? {};
       const inputCost = verifiedCost(value?.cost?.input);
       const outputCost = verifiedCost(value?.cost?.output);
-      const priceVerified = inputCost !== null && outputCost !== null;
+      const reportedPricing = analyzeRates(
+        normalizeCliCost(value?.cost),
+        value?.experimental?.modes,
+      );
+      const effectiveCapabilities = capabilityDetails(
+        value,
+        "opencode",
+        observedAt,
+        true,
+      );
       models.push({
         id,
-        provider: id.split("/", 1)[0],
-        name: typeof value?.name === "string" ? value.name : id.split("/").at(-1),
+        api: normalizeApiIdentity(value?.api),
+        reportedPricing,
+        capabilities: effectiveCapabilities,
+        provider: splitModelId(id)[0],
+        name:
+          typeof value?.name === "string" ? value.name : splitModelId(id)[1],
         status: value?.status === "active" ? "active" : "unavailable",
         // OpenCode can normalize missing prices to zero. A zero reported here is
         // not sufficient evidence that an arbitrary provider model is free.
-        priceClass:
-          priceVerified && (inputCost > 0 || outputCost > 0) ? "paid" : "unknown",
+        priceClass: reportedPricing.class === "paid" ? "paid" : "unknown",
         free: false,
         inputCost,
         outputCost,
         inputCostVerified: inputCost !== null,
         outputCostVerified: outputCost !== null,
-        context: Number.isFinite(value?.limit?.context) ? value.limit.context : null,
-        toolCall: value?.capabilities?.toolcall === true,
+        context: Number.isFinite(value?.limit?.context)
+          ? value.limit.context
+          : null,
+        toolCall: effectiveCapabilities.toolCall,
         inputModalities: INPUT_MODALITIES.filter(
           (modality) => input[modality] === true,
         ),
@@ -115,7 +156,9 @@ function verifiedCost(value) {
 }
 
 export function parseOpenCodeVersion(stdout) {
-  const match = String(stdout).trim().match(/^v?(\d+\.\d+\.\d+(?:[-+][\w.-]+)?)$/u);
+  const match = String(stdout)
+    .trim()
+    .match(/^v?(\d+\.\d+\.\d+(?:[-+][\w.-]+)?)$/u);
   return match?.[1] ?? null;
 }
 
@@ -138,10 +181,18 @@ export async function discoverOpenCode({
   let version = null;
 
   try {
-    const versionResult = await execute("opencode", ["--version"], options, execFile);
+    const versionResult = await execute(
+      "opencode",
+      ["--version"],
+      options,
+      execFile,
+    );
     version = parseOpenCodeVersion(versionResult.stdout);
   } catch (error) {
-    const code = error?.code === "ENOENT" ? "OPENCODE_NOT_FOUND" : "OPENCODE_DISCOVERY_FAILED";
+    const code =
+      error?.code === "ENOENT"
+        ? "OPENCODE_NOT_FOUND"
+        : "OPENCODE_DISCOVERY_FAILED";
     return failedDiscovery({ code, version });
   }
 
@@ -167,9 +218,10 @@ export async function discoverOpenCode({
         },
       });
     } catch {
-      const code = canonicalError?.code === "ENOENT"
-        ? "OPENCODE_NOT_FOUND"
-        : "OPENCODE_DISCOVERY_FAILED";
+      const code =
+        canonicalError?.code === "ENOENT"
+          ? "OPENCODE_NOT_FOUND"
+          : "OPENCODE_DISCOVERY_FAILED";
       return failedDiscovery({ code, version });
     }
   }
@@ -212,13 +264,16 @@ function failedDiscovery({ code, version }) {
 export function toLiveAvailability(catalog, liveModels) {
   const models = new Map(
     liveModels.map((entry) =>
-      typeof entry === "string" ? [entry, { id: entry, free: false }] : [entry.id, entry],
+      typeof entry === "string"
+        ? [entry, { id: entry, free: false }]
+        : [entry.id, entry],
     ),
   );
   return Object.fromEntries(
     catalog.models.map((model) => {
       const live = models.get(model.id);
-      const priceVerified = live?.inputCostVerified === true && live?.outputCostVerified === true;
+      const priceVerified =
+        live?.inputCostVerified === true && live?.outputCostVerified === true;
       return [
         model.id,
         {
@@ -229,11 +284,33 @@ export function toLiveAvailability(catalog, liveModels) {
   );
 }
 
-export function mergeDiscoveredCatalog(baseCatalog, liveModels, {
-  snapshotDate = new Date().toISOString().slice(0, 10),
-  curatedCatalog,
-} = {}) {
-  const previous = new Map(baseCatalog.models.map((model) => [model.id, model]));
+function retainCliConflict(pricing, priorPricing) {
+  const conflicts = (priorPricing?.reasons ?? []).filter((reason) =>
+    ["conflicting-cli-rates", "identity-or-rate-conflict"].includes(reason),
+  );
+  return conflicts.length
+    ? {
+        ...pricing,
+        class: "unknown",
+        reasons: [...new Set([...pricing.reasons, ...conflicts])],
+      }
+    : pricing;
+}
+
+export function mergeDiscoveredCatalog(
+  baseCatalog,
+  liveModels,
+  {
+    snapshotDate = new Date().toISOString().slice(0, 10),
+    curatedCatalog,
+    publicMetadata,
+    now = Date.now(),
+  } = {},
+) {
+  baseCatalog = validateCatalog(baseCatalog);
+  const previous = new Map(
+    baseCatalog.models.map((model) => [model.id, model]),
+  );
   const curatedById = new Map(
     (curatedCatalog?.models ?? []).map((model) => [model.id, model]),
   );
@@ -244,12 +321,30 @@ export function mergeDiscoveredCatalog(baseCatalog, liveModels, {
     const curated = curatedById.get(id);
     const live = liveById.get(id);
     if (!live) {
+      // Public metadata may revoke or update evidence, but an omitted CLI
+      // observation cannot resolve a previously observed pricing conflict.
+      const publicPricing = publicMetadata
+        ? resolveModelEvidence(prior, publicMetadata)
+        : null;
       const capabilityDerived =
         !curated &&
         (prior?.profileSource === "capability" ||
           (prior?.profileSource == null && prior?.discovered === true));
       return {
         ...prior,
+        ...(publicMetadata
+          ? {
+              pricing: retainCliConflict(publicPricing, prior.pricing),
+              capabilities: {
+                ...prior.capabilities,
+                supplemental: publicPricing.reasons.includes(
+                  "identity-conflict",
+                )
+                  ? null
+                  : (publicMetadata.models?.[id]?.capabilities ?? null),
+              },
+            }
+          : {}),
         ...(curated
           ? {
               label: curated.label,
@@ -264,7 +359,8 @@ export function mergeDiscoveredCatalog(baseCatalog, liveModels, {
         available: false,
         discovered: false,
         runtimeVerified: false,
-        enabledByDefault: curated?.enabledByDefault ??
+        enabledByDefault:
+          curated?.enabledByDefault ??
           (capabilityDerived ? false : prior.enabledByDefault),
       };
     }
@@ -275,47 +371,128 @@ export function mergeDiscoveredCatalog(baseCatalog, liveModels, {
         prior.profileSource === "capability" ||
         (prior.profileSource == null && prior.discovered === true));
 
-    const reportedInputCost = verifiedCost(
-      live.inputCost ?? (live.free === true ? 0 : null),
-    );
-    const reportedOutputCost = verifiedCost(
-      live.outputCost ?? (live.free === true ? 0 : null),
-    );
-    const reportedPrices =
-      live.inputCostVerified === true &&
-      live.outputCostVerified === true &&
-      reportedInputCost !== null &&
-      reportedOutputCost !== null;
-    const liveHasPositivePrice =
-      reportedPrices && (reportedInputCost > 0 || reportedOutputCost > 0);
-    const pricingEvidence = curated ?? prior;
-    const priorVerifiedFree =
-      pricingEvidence?.free?.verified === true &&
-      pricingEvidence.free.inputUsdPerMillion === 0 &&
-      pricingEvidence.free.outputUsdPerMillion === 0;
-    const verifiedPricing = liveHasPositivePrice || (priorVerifiedFree && reportedPrices);
+    const observedAt =
+      live.capabilities?.observedAt ?? new Date(now).toISOString();
+    const reported =
+      live.reportedPricing ??
+      analyzeRates({
+        input: live.inputCostVerified === true ? live.inputCost : undefined,
+        output: live.outputCostVerified === true ? live.outputCost : undefined,
+      });
+    const api = normalizeApiIdentity(live.api);
+    let pricing;
+    if (publicMetadata) {
+      pricing = resolveModelEvidence(live, publicMetadata);
+      // CLI normalized zero is not contradictory to raw positive pricing, but
+      // a positive CLI price conflicting with raw evidence must fail closed.
+      if (
+        pricing.class !== "unknown" &&
+        (reported.class === "unknown" ||
+          Object.entries(reported.rates).some(
+            ([key, rate]) =>
+              rate > 0 &&
+              (pricing.rates[key] === undefined || pricing.rates[key] !== rate),
+          ))
+      ) {
+        pricing = {
+          ...pricing,
+          class: "unknown",
+          reasons: ["conflicting-cli-rates"],
+        };
+      }
+    } else if (prior?.pricing?.source === "https://models.dev/api.json") {
+      pricing = prior.pricing;
+      if (
+        !api.urlValid ||
+        JSON.stringify(api) !==
+          JSON.stringify(normalizeApiIdentity(prior.api)) ||
+        reported.class === "unknown" ||
+        Object.entries(reported.rates).some(
+          ([key, rate]) => rate > 0 && pricing.rates[key] !== rate,
+        )
+      )
+        pricing = {
+          ...pricing,
+          class: "unknown",
+          reasons: ["identity-or-rate-conflict"],
+        };
+    } else pricing = unknownPricing();
+    // Compatibility only: complete positive CLI rates can establish reported
+    // paid status when no independent source record contradicts them.
+    if (
+      (!publicMetadata || !publicMetadata.models?.[id]) &&
+      pricing.source !== "https://models.dev/api.json" &&
+      reported.class === "paid" &&
+      api.urlValid
+    ) {
+      pricing = {
+        ...reported,
+        source: "reported-paid",
+        digest: null,
+        fetchedAt: observedAt,
+        expiresAt: new Date(
+          Date.parse(observedAt) + PRICING_TTL_MS,
+        ).toISOString(),
+      };
+    }
+    const pricingClass = classifyPricingEvidence(pricing, { now });
+    // A fresh observation resolves the rejection only when its resulting
+    // evidence is known and current; unknown metadata must not wash it out.
+    if (pricingClass === "unknown")
+      pricing = retainCliConflict(pricing, prior?.pricing);
+    const verifiedPricing = pricingClass !== "unknown";
+    const effective =
+      live.capabilities ??
+      capabilityDetails(
+        {
+          capabilities: {
+            toolcall: live.toolCall,
+            input: Object.fromEntries(
+              (live.inputModalities ?? []).map((key) => [key, true]),
+            ),
+            output: Object.fromEntries(
+              (live.outputModalities ?? []).map((key) => [key, true]),
+            ),
+          },
+          limit: { context: live.context },
+        },
+        "opencode",
+        observedAt,
+        true,
+      );
+    const supplemental =
+      pricing.reasons.includes("identity-conflict") ||
+      pricing.reasons.includes("identity-or-rate-conflict")
+        ? null
+        : (publicMetadata?.models?.[id]?.capabilities ??
+          prior?.capabilities?.supplemental ??
+          null);
     const inputModalities = Array.isArray(live.inputModalities)
       ? live.inputModalities
       : capabilityDerived
         ? []
-        : curated?.modalities?.input ?? prior?.modalities?.input ?? [];
+        : (curated?.modalities?.input ?? prior?.modalities?.input ?? []);
     const outputModalities = Array.isArray(live.outputModalities)
       ? live.outputModalities
       : capabilityDerived
         ? []
-        : curated?.modalities?.output ?? prior?.modalities?.output ?? [];
+        : (curated?.modalities?.output ?? prior?.modalities?.output ?? []);
     const capabilityProfile = capabilityRoleProfile({
       inputModalities,
       outputModalities,
       toolCall: live.toolCall,
     });
-    const curatedProfile = curated
+    const restrictedProfile = curated ?? (capabilityDerived ? null : prior);
+    const curatedProfile = restrictedProfile
       ? {
-          access: curated.access.filter((mode) => capabilityProfile.access.includes(mode)),
+          access: restrictedProfile.access.filter((mode) =>
+            capabilityProfile.access.includes(mode),
+          ),
           canOrchestrate:
-            curated.canOrchestrate === true && capabilityProfile.canOrchestrate === true,
+            restrictedProfile.canOrchestrate === true &&
+            capabilityProfile.canOrchestrate === true,
           roles: Object.fromEntries(
-            Object.entries(curated.roles).filter(([role]) =>
+            Object.entries(restrictedProfile.roles).filter(([role]) =>
               Object.hasOwn(capabilityProfile.roles, role),
             ),
           ),
@@ -325,46 +502,66 @@ export function mergeDiscoveredCatalog(baseCatalog, liveModels, {
     return {
       ...(prior ?? {}),
       id,
+      api,
+      pricing,
+      capabilities: { effective, supplemental },
       label: curated?.label ?? prior?.label ?? live.name,
       status: curated?.status ?? prior?.status ?? "provisional",
       provisional: curated?.provisional ?? prior?.provisional ?? true,
-      enabledByDefault: curated?.enabledByDefault ?? prior?.enabledByDefault ?? false,
+      enabledByDefault:
+        curated?.enabledByDefault ?? prior?.enabledByDefault ?? false,
       available: live.status === "active",
       discovered: true,
       runtimeVerified: false,
-      provider: live.provider ?? id.split("/", 1)[0],
-      profileSource: curated ? "curated" : prior?.profileSource ?? "capability",
+      provider: live.provider ?? splitModelId(id)[0],
+      profileSource: curated
+        ? "curated"
+        : (prior?.profileSource ?? "capability"),
       contextWindowTokens:
         Number.isInteger(live.context) && live.context > 0
           ? live.context
-          : prior?.contextWindowTokens ?? null,
+          : null,
       free: {
         verified: verifiedPricing,
-        inputUsdPerMillion: verifiedPricing ? reportedInputCost : null,
-        outputUsdPerMillion: verifiedPricing ? reportedOutputCost : null,
-        verifiedAt: snapshotDate,
+        inputUsdPerMillion: verifiedPricing ? pricing.rates.input : null,
+        outputUsdPerMillion: verifiedPricing ? pricing.rates.output : null,
+        verifiedAt:
+          pricing.fetchedAt?.slice(0, 10) ?? prior?.free?.verifiedAt ?? null,
       },
       modalities: { input: inputModalities, output: outputModalities },
       toolCall: live.toolCall === true,
-      access: curatedProfile?.access ??
-        (capabilityDerived ? capabilityProfile.access : prior?.access ?? capabilityProfile.access),
-      canOrchestrate: curatedProfile?.canOrchestrate ??
+      access:
+        curatedProfile?.access ??
+        (capabilityDerived
+          ? capabilityProfile.access
+          : (prior?.access ?? capabilityProfile.access)),
+      canOrchestrate:
+        curatedProfile?.canOrchestrate ??
         (capabilityDerived
           ? capabilityProfile.canOrchestrate
-          : prior?.canOrchestrate ?? capabilityProfile.canOrchestrate),
-      roles: curatedProfile?.roles ??
-        (capabilityDerived ? capabilityProfile.roles : prior?.roles ?? capabilityProfile.roles),
+          : (prior?.canOrchestrate ?? capabilityProfile.canOrchestrate)),
+      roles:
+        curatedProfile?.roles ??
+        (capabilityDerived
+          ? capabilityProfile.roles
+          : (prior?.roles ?? capabilityProfile.roles)),
     };
   });
 
   return {
     ...baseCatalog,
     snapshotDate,
+    schemaVersion: 2,
+    revision: digestJson(models),
     models,
   };
 }
 
-function capabilityRoleProfile({ inputModalities, outputModalities, toolCall }) {
+function capabilityRoleProfile({
+  inputModalities,
+  outputModalities,
+  toolCall,
+}) {
   const acceptsText = inputModalities.includes("text");
   const returnsText = outputModalities.includes("text");
   const roles = {};
@@ -373,7 +570,12 @@ function capabilityRoleProfile({ inputModalities, outputModalities, toolCall }) 
     roles.orchestrator = 25;
     roles["code-worker"] = 25;
   }
-  if (acceptsText && inputModalities.includes("image") && returnsText && toolCall) {
+  if (
+    acceptsText &&
+    ["image", "audio", "video", "pdf"].some((modality) => inputModalities.includes(modality)) &&
+    returnsText &&
+    toolCall
+  ) {
     roles["vision-worker"] = 25;
   }
   return {
@@ -381,4 +583,40 @@ function capabilityRoleProfile({ inputModalities, outputModalities, toolCall }) 
     canOrchestrate: acceptsText && returnsText && toolCall === true,
     roles,
   };
+}
+
+// OpenCode normalizes raw Models.dev cache rates into an object. Preserve all
+// other fields so unknown billing dimensions still fail closed in analyzeRates.
+function normalizeCliCost(cost) {
+  if (!cost || typeof cost !== "object" || Array.isArray(cost)) return cost;
+  const result = { ...cost };
+  if (Object.hasOwn(result, "cache")) {
+    const cache = result.cache;
+    if (
+      !cache ||
+      typeof cache !== "object" ||
+      Array.isArray(cache) ||
+      Object.keys(cache).some((key) => !["read", "write"].includes(key))
+    )
+      result.unsupported_cache = null;
+    else {
+      result.cache_read = cache.read;
+      result.cache_write = cache.write;
+      if (
+        (cost.cache_read !== undefined && cost.cache_read !== cache.read) ||
+        (cost.cache_write !== undefined && cost.cache_write !== cache.write)
+      )
+        result.conflicting_cache = null;
+    }
+    delete result.cache;
+  }
+  if (Array.isArray(result.tiers))
+    result.tiers = result.tiers.map(normalizeCliCost);
+  if (Object.hasOwn(result, "experimentalOver200K")) {
+    if (Object.hasOwn(result, "context_over_200k"))
+      result.conflicting_legacy = null;
+    result.context_over_200k = normalizeCliCost(result.experimentalOver200K);
+    delete result.experimentalOver200K;
+  }
+  return result;
 }
