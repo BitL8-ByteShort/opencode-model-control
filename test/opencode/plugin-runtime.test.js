@@ -1,3 +1,4 @@
+import { loadModelCatalog, syntheticPricing } from "../fixtures/catalog.js";
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -15,7 +16,6 @@ import {
 } from "../../src/opencode/plugin-runtime.js";
 import {
   createDefaultSettings,
-  loadModelCatalog,
 } from "../../src/core/index.js";
 import * as pluginModule from "../../src/opencode/plugin.js";
 

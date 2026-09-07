@@ -1,3 +1,4 @@
+import { loadModelCatalog, syntheticPricing } from "../fixtures/catalog.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 
@@ -11,7 +12,6 @@ import {
 import {
   createDefaultSettings,
   eligibleModelsForRole,
-  loadModelCatalog,
 } from "../../src/core/index.js";
 
 const EXPECTED_ROLE_MODELS = {

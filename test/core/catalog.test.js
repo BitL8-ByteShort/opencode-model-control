@@ -1,3 +1,5 @@
+import { loadModelCatalog as loadBundledCatalog } from "../../src/core/index.js";
+import { loadModelCatalog, syntheticPricing } from "../fixtures/catalog.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 
@@ -6,7 +8,6 @@ import {
   classifyModelPricing,
   createDefaultSettings,
   eligibleModelsForRole,
-  loadModelCatalog,
   validateCatalog,
 } from "../../src/core/index.js";
 
@@ -17,6 +18,7 @@ function derivedModel(id, overrides = {}) {
     id,
     label: id,
     ...overrides,
+    pricing: syntheticPricing(overrides.free ?? source.free),
   };
 }
 
@@ -29,17 +31,18 @@ const EXPECTED_MODEL_IDS = [
   "opencode/nemotron-3.5-lightning-free",
 ];
 
-test("the bundled catalog contains exactly the verified six-model roster", () => {
-  const catalog = loadModelCatalog();
+test("the bundled catalog retains its descriptive roster without pricing authorization", () => {
+  const catalog = loadBundledCatalog();
 
   assert.deepEqual(KNOWN_MODEL_IDS, EXPECTED_MODEL_IDS);
   assert.deepEqual(
     catalog.models.map((model) => model.id),
     EXPECTED_MODEL_IDS,
   );
-  assert.equal(catalog.schemaVersion, 1);
+  assert.equal(catalog.schemaVersion, 2);
 
   for (const model of catalog.models) {
+    assert.equal(classifyModelPricing(model), "unknown");
     assert.equal(model.free.verified, true);
     assert.equal(model.free.inputUsdPerMillion, 0);
     assert.equal(model.free.outputUsdPerMillion, 0);
@@ -92,7 +95,7 @@ test("strict free-only eligibility excludes unverified, disabled, unavailable, a
   const ling = raw.models.find(
     (model) => model.id === "opencode/ling-3.0-flash-fin-free",
   );
-  ling.free.verified = false;
+  ling.pricing = syntheticPricing({verified:false});
 
   const catalog = validateCatalog(raw);
   const settings = createDefaultSettings(catalog);

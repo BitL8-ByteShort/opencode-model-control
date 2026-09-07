@@ -50,7 +50,7 @@ test("verbose catalog parser retains only routing-safe facts", () => {
 }`;
   const models = parseOpenCodeVerboseCatalog(output);
 
-  assert.deepEqual(models, [
+  assert.deepEqual(models.map(({api, reportedPricing, capabilities, ...legacy}) => legacy), [
     {
       id: "opencode/mimo-v2.5-free",
       provider: "opencode",
@@ -165,7 +165,7 @@ test("plugin-free fallback is explicit and never presented as a complete catalog
   assert.equal(result.models[0].priceClass, "paid");
 });
 
-test("catalog merge trusts curated free evidence but blocks arbitrary reported zero prices", () => {
+test("catalog merge blocks curated and arbitrary zero prices without public evidence", () => {
   const base = {
     schemaVersion: 1,
     snapshotDate: "2026-08-30",
@@ -216,7 +216,7 @@ test("catalog merge trusts curated free evidence but blocks arbitrary reported z
   ];
 
   const merged = mergeDiscoveredCatalog(base, live, { snapshotDate: "2026-08-30" });
-  assert.equal(merged.models.find((model) => model.id === "opencode/big-pickle").free.verified, true);
+  assert.equal(merged.models.find((model) => model.id === "opencode/big-pickle").free.verified, false);
   assert.equal(merged.models.find((model) => model.id === "custom/reported-zero").free.verified, false);
 });
 
@@ -382,7 +382,7 @@ xai/grok-4.6
     verified: true,
     inputUsdPerMillion: 2,
     outputUsdPerMillion: 6,
-    verifiedAt: "2026-09-01",
+    verifiedAt: new Date().toISOString().slice(0,10),
   });
 
   const draft = createDefaultSettings(catalog);

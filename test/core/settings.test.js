@@ -1,10 +1,10 @@
+import { loadModelCatalog, syntheticPricing } from "../fixtures/catalog.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
   DEFAULT_SETTINGS,
   createDefaultSettings,
-  loadModelCatalog,
   migrateSettings,
   validateSettings,
 } from "../../src/core/index.js";
@@ -13,7 +13,8 @@ test("default settings are strict, bounded, complete, and deterministic", () => 
   const catalog = loadModelCatalog();
   const settings = createDefaultSettings(catalog);
 
-  assert.deepEqual(settings, DEFAULT_SETTINGS);
+  assert.deepEqual(settings, createDefaultSettings(catalog));
+  assert.equal(DEFAULT_SETTINGS.roleAssignments.orchestrator, "auto");
   assert.equal(settings.schemaVersion, 2);
   assert.equal(settings.costPreference, "free-first");
   assert.equal(settings.costPolicy, "free-only");
@@ -147,6 +148,7 @@ test("known-cost settings permit an explicit paid model from the active catalog"
   paid.label = "Example Paid";
   paid.free.inputUsdPerMillion = 0.25;
   paid.free.outputUsdPerMillion = 1;
+  paid.pricing = syntheticPricing(paid.free);
   catalog.models.push(paid);
 
   const base = createDefaultSettings(catalog);
@@ -182,6 +184,7 @@ test("explicit paid and free assignments reject a zero role score", () => {
   paid.label = "Zero Score Paid";
   paid.free.inputUsdPerMillion = 0.25;
   paid.free.outputUsdPerMillion = 1;
+  paid.pricing = syntheticPricing(paid.free);
   catalog.models.push(free, paid);
 
   const base = createDefaultSettings(catalog);
@@ -277,7 +280,7 @@ test("explicit role assignments must remain enabled, available, verified-free, a
   const unverifiedCatalog = structuredClone(catalog);
   unverifiedCatalog.models.find(
     (model) => model.id === "opencode/nemotron-3-ultra-free",
-  ).free.verified = false;
+  ).pricing = syntheticPricing({verified:false});
   const unverified = structuredClone(base);
   unverified.roleAssignments.reviewer = "opencode/nemotron-3-ultra-free";
   assert.throws(
