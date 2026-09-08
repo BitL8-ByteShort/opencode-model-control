@@ -5,6 +5,7 @@ import {
   modelSupports,
   modelEnabled,
   eligibleModelsForRole,
+  resolveEligibility,
   assertExplicitAssignments,
   CATALOG_REFRESH_MS,
   planRoute,
@@ -101,10 +102,8 @@ function modelBlockReasons(model, settings) {
   if (!modelEnabled(settings, model.id)) reasons.push("disabled");
   if (!model.available || settings.modelControls[model.id]?.available === false)
     reasons.push("unavailable");
-  const pricing = classifyModelPricing(model);
-  if (pricing === "unknown") reasons.push("unknown-pricing");
-  else if (pricing === "paid" && settings.costPolicy === "free-only")
-    reasons.push("paid-blocked");
+  const eligibility = resolveEligibility({ model, settings });
+  reasons.push(...eligibility.blockingReasons);
   return reasons;
 }
 

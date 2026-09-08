@@ -1,4 +1,5 @@
 import { classifyPricingEvidence, unknownPricing, normalizeApiIdentity, capabilityDetails, digestJson } from "./pricing.js";
+import { resolveEligibility } from "./eligibility.js";
 import { pricingSchema, capabilityDetailsSchema } from "./catalog-evidence.js";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -378,18 +379,15 @@ export function eligibleModelsForRole({
   }
 
   return validateCatalog(catalog).models
-    .filter((model) => {
-      const control = settings?.modelControls?.[model.id];
-      const pricingClass = classifyModelPricing(model);
-      return (
-        pricingClass !== "unknown" &&
-        (costPolicy === "known-cost" || pricingClass === "free") &&
-        model.available === true &&
-        modelEnabled(settings, model.id) &&
-        control?.available !== false &&
-        modelSupports({ model, role, modalities, access })
-      );
-    })
+    .filter((model) =>
+      resolveEligibility({
+        model,
+        settings,
+        role,
+        modalities,
+        access,
+      }).allowed,
+    )
     .sort((left, right) =>
       compareEligibleModels(left, right, role, costPreference),
     );

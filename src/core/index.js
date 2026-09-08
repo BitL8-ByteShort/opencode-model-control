@@ -32,6 +32,7 @@ export {
   validateSettings,
   assertExplicitAssignments,
 } from "./settings.js";
+export { resolveEligibility } from "./eligibility.js";
 export { planRoute } from "./planner.js";
 export { sanitizeResult, sanitizeText } from "./sanitize.js";
 
