@@ -315,7 +315,7 @@ test("invalid live URLs stay redacted and block pricing through parsing, persist
     "https://user:TOP_SECRET@custom.example/v1",
     "https://custom.example/v1#TOP_SECRET",
     "TOP_SECRET invalid url",
-    "",
+    "   ",
     123,
   ]) {
     const parsed = parse(url);

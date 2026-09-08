@@ -337,9 +337,9 @@ export function mergeDiscoveredCatalog(
               pricing: retainCliConflict(publicPricing, prior.pricing),
               capabilities: {
                 ...prior.capabilities,
-                supplemental: publicPricing.reasons.includes(
-                  "identity-conflict",
-                )
+                supplemental:
+                  publicPricing.reasons.includes("identity-conflict") ||
+                  publicPricing.reasons.includes("public-price-route-mismatch")
                   ? null
                   : (publicMetadata.models?.[id]?.capabilities ?? null),
               },
@@ -462,6 +462,7 @@ export function mergeDiscoveredCatalog(
       );
     const supplemental =
       pricing.reasons.includes("identity-conflict") ||
+      pricing.reasons.includes("public-price-route-mismatch") ||
       pricing.reasons.includes("identity-or-rate-conflict")
         ? null
         : (publicMetadata?.models?.[id]?.capabilities ??

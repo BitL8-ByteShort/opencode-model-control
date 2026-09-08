@@ -100,8 +100,12 @@ export function analyzeRates(cost, modes) {
   };
 }
 
+function isUnspecifiedEndpoint(value) {
+  return value === undefined || value === null || value === "";
+}
+
 function safeUrl(value) {
-  if (value === undefined || value === null) return null;
+  if (isUnspecifiedEndpoint(value)) return null;
   try {
     const url = new URL(value);
     if (
@@ -118,12 +122,12 @@ function safeUrl(value) {
   }
 }
 export function normalizeApiIdentity(value) {
-  const url = safeUrl(value?.url);
+  const unspecified = isUnspecifiedEndpoint(value?.url);
+  const url = unspecified ? null : safeUrl(value?.url);
   // Do not let redaction turn an invalid endpoint into an absent endpoint.
   // Preserve this flag through repeated normalization and persisted snapshots.
   const urlValid =
-    value?.urlValid !== false &&
-    (value?.url === undefined || value?.url === null || url !== null);
+    value?.urlValid !== false && (unspecified || url !== null);
   return {
     id:
       typeof value?.id === "string" &&
@@ -138,6 +142,19 @@ export function normalizeApiIdentity(value) {
     url,
     urlValid,
   };
+}
+export function publicRatesApply(publicApi, liveApi) {
+  const pub = normalizeApiIdentity(publicApi);
+  const live = normalizeApiIdentity(liveApi);
+  return (
+    pub.urlValid &&
+    live.urlValid &&
+    pub.id !== null &&
+    pub.npm !== null &&
+    pub.id === live.id &&
+    pub.npm === live.npm &&
+    pub.url === live.url
+  );
 }
 const tri = (value) => (typeof value === "boolean" ? value : null);
 const limit = (value) => (Number.isInteger(value) && value > 0 ? value : null);
@@ -284,15 +301,23 @@ export function resolveModelEvidence(live, snapshot) {
   const record = snapshot?.models?.[live.id];
   if (!record) return unknownPricing("model-not-in-public-source");
   const api = normalizeApiIdentity(live.api);
-  const conflict =
-    ["id", "npm", "url"].some((key) => api[key] !== record.api[key]) ||
+  const publicApi = normalizeApiIdentity(record.api);
+  const identityConflict =
     !api.id ||
     !api.npm ||
     !api.urlValid ||
-    record.api.urlValid === false;
+    publicApi.urlValid === false ||
+    api.id !== publicApi.id ||
+    api.npm !== publicApi.npm;
+  const priceRouteMismatch =
+    !identityConflict && !publicRatesApply(publicApi, api);
   return {
     ...record.pricing,
-    ...(conflict ? { class: "unknown", reasons: ["identity-conflict"] } : {}),
+    ...(identityConflict
+      ? { class: "unknown", reasons: ["identity-conflict"] }
+      : priceRouteMismatch
+        ? { class: "unknown", reasons: ["public-price-route-mismatch"] }
+        : {}),
     source: MODELS_DEV_URL,
     digest: snapshot.digest,
     fetchedAt: snapshot.fetchedAt,
