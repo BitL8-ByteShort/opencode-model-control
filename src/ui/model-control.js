@@ -220,8 +220,12 @@ export function normalizeSettings(settings = {}, catalog = []) {
 
   return {
     ...settings,
-    schemaVersion: 3,
+    schemaVersion: 4,
     autoIncludeNewModels: settings.autoIncludeNewModels !== false,
+    paidEligibility:
+      settings.paidEligibility === "configured-connections"
+        ? "configured-connections"
+        : "verified-pricing",
     costPreference:
       settings.costPreference === "paid-first" || settings.freeOnly === false
         ? "paid-first"
@@ -252,6 +256,13 @@ export function normalizeSettings(settings = {}, catalog = []) {
       typeof settings.makeRouterDefault === "boolean"
         ? settings.makeRouterDefault
         : true,
+    roleConnections: settings.roleConnections ?? {
+      orchestrator: null,
+      "code-worker": null,
+      "vision-worker": null,
+      reviewer: null,
+    },
+    billingDeclarations: settings.billingDeclarations ?? {},
   };
 }
 
@@ -281,12 +292,23 @@ export function settingsEqual(left, right) {
 
 export function settingsForApi(settings) {
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     autoIncludeNewModels: settings.autoIncludeNewModels !== false,
+    paidEligibility:
+      settings.paidEligibility === "configured-connections"
+        ? "configured-connections"
+        : "verified-pricing",
     costPreference:
       settings.costPreference === "paid-first" ? "paid-first" : "free-first",
     costPolicy:
       settings.costPolicy === "known-cost" ? "known-cost" : "free-only",
+    roleConnections: settings.roleConnections ?? {
+      orchestrator: null,
+      "code-worker": null,
+      "vision-worker": null,
+      reviewer: null,
+    },
+    billingDeclarations: settings.billingDeclarations ?? {},
     maxDelegationDepth: clampInteger(settings.maxDelegationDepth, 1, 0, 1),
     maxFallbacksPerAssignment: clampInteger(
       settings.maxFallbacksPerAssignment,

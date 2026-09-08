@@ -8,7 +8,10 @@
     "schemaVersion",
     "costPreference",
     "costPolicy",
+    "paidEligibility",
     "roleAssignments",
+    "roleConnections",
+    "billingDeclarations",
     "maxDelegationDepth",
     "maxFallbacksPerAssignment",
     "makeRouterDefault",
@@ -17,7 +20,7 @@
   ],
   "properties": {
     "schemaVersion": {
-      "const": 3
+      "const": 4
     },
     "costPreference": {
       "enum": [
@@ -30,6 +33,46 @@
         "free-only",
         "known-cost"
       ]
+    },
+    "paidEligibility": {
+      "enum": [
+        "verified-pricing",
+        "configured-connections"
+      ]
+    },
+    "roleConnections": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "orchestrator",
+        "code-worker",
+        "vision-worker",
+        "reviewer"
+      ],
+      "properties": {
+        "orchestrator": {
+          "$ref": "#/$defs/roleConnection"
+        },
+        "code-worker": {
+          "$ref": "#/$defs/roleConnection"
+        },
+        "vision-worker": {
+          "$ref": "#/$defs/roleConnection"
+        },
+        "reviewer": {
+          "$ref": "#/$defs/roleConnection"
+        }
+      }
+    },
+    "billingDeclarations": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^[a-f0-9]{32}$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/billingDeclaration"
+      }
     },
     "roleAssignments": {
       "type": "object",
@@ -84,6 +127,63 @@
     }
   },
   "$defs": {
+    "roleConnection": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "connectionId",
+            "bindingRevision"
+          ],
+          "properties": {
+            "connectionId": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{32}$"
+            },
+            "bindingRevision": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{32}$"
+            }
+          }
+        }
+      ]
+    },
+    "billingDeclaration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "bindingRevision",
+        "source"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "subscription",
+            "metered-api",
+            "prepaid",
+            "local",
+            "free",
+            "unknown"
+          ]
+        },
+        "bindingRevision": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{32}$"
+        },
+        "source": {
+          "const": "user-declared"
+        },
+        "declaredAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
     "assignment": {
       "oneOf": [
         {

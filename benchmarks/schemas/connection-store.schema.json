@@ -1,0 +1,204 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opencode-model-control.local/schemas/connection-store.schema.json",
+  "title": "OpenCode Model Control Connection Snapshot",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "revision",
+    "scopeId",
+    "connections"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "revision": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "scopeId": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "description": "Private installation scope UUID. Not a path, account name, or credential fingerprint."
+    },
+    "connections": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/connection"
+      }
+    }
+  },
+  "$defs": {
+    "hex32": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{32}$"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "quota": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "unit",
+        "limit",
+        "used",
+        "remaining",
+        "resetsAt",
+        "observedAt",
+        "expiresAt"
+      ],
+      "properties": {
+        "source": {
+          "enum": [
+            "host",
+            "provider-adapter"
+          ]
+        },
+        "unit": {
+          "enum": [
+            "tokens",
+            "requests",
+            "credits",
+            "percent"
+          ]
+        },
+        "limit": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "used": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "remaining": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "resetsAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "observedAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "expiresAt": {
+          "$ref": "#/$defs/timestamp"
+        }
+      }
+    },
+    "connection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "providerId",
+        "bindingRevision",
+        "authKind",
+        "billing",
+        "transportVisibility",
+        "inventoryObservedAt",
+        "entitlement",
+        "quota"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/hex32"
+        },
+        "providerId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+        },
+        "bindingRevision": {
+          "$ref": "#/$defs/hex32"
+        },
+        "authKind": {
+          "enum": [
+            "oauth",
+            "api-key",
+            "none",
+            "unknown"
+          ]
+        },
+        "billing": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "source",
+            "observedAt"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "subscription",
+                "metered-api",
+                "prepaid",
+                "local",
+                "free",
+                "unknown"
+              ]
+            },
+            "source": {
+              "enum": [
+                "host",
+                "provider-adapter",
+                "user-declared",
+                "unknown"
+              ]
+            },
+            "observedAt": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            }
+          }
+        },
+        "transportVisibility": {
+          "enum": [
+            "declared-endpoint",
+            "host-managed"
+          ]
+        },
+        "inventoryObservedAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "entitlement": {
+          "enum": [
+            "reported-active",
+            "reported-revoked",
+            "not-reported"
+          ]
+        },
+        "quota": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/quota"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

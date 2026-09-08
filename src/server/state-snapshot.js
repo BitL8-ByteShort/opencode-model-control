@@ -11,6 +11,7 @@ import {
   readCatalogSnapshot,
   resolveCatalogSnapshotPath,
 } from "./catalog-store.js";
+import { readConnectionSnapshot } from "./connection-store.js";
 import { withStateLock } from "./state-lock.js";
 
 export const refreshStatusPath = (settingsPath) =>
@@ -79,9 +80,15 @@ export async function readControlSnapshot({
       locked: true,
     });
     const raw = (await readRawSettings(settingsPath)).value;
+    const connections = await readConnectionSnapshot({
+      settingsPath,
+      locked: true,
+    });
     return {
       catalog,
       settings,
+      connections: connections.connections,
+      connectionRevision: connections.revision,
       settingsExists: raw !== undefined,
       catalogExists: savedCatalog !== null,
       settingsRevision: settingsRevision(raw),

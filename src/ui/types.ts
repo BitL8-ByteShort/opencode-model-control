@@ -63,13 +63,21 @@ export interface ModelControl {
   available?: boolean;
 }
 
+export interface RoleConnection {
+  connectionId: string;
+  bindingRevision: string;
+}
+
 export interface RouterSettings {
   schemaVersion?: number;
   costPreference: "free-first" | "paid-first";
   costPolicy: "free-only" | "known-cost";
+  paidEligibility?: "verified-pricing" | "configured-connections";
   freeOnly?: boolean;
   autoIncludeNewModels: boolean;
   roleAssignments: RoleAssignments;
+  roleConnections?: Record<string, RoleConnection | null>;
+  billingDeclarations?: Record<string, unknown>;
   modelControls: Record<string, ModelControl>;
   maxDelegationDepth: number;
   maxFallbacksPerAssignment: number;

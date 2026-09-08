@@ -34,7 +34,7 @@ test("canonical policy leaves new identities absent, preserves explicit pins and
     ui.modelIntentEnabled({ ...policy, autoIncludeNewModels: true }, model.id),
     true,
   );
-  assert.equal(ui.settingsForApi(policy).schemaVersion, 3);
+  assert.equal(ui.settingsForApi(policy).schemaVersion, 4);
   assert.equal(ui.settingsForApi(policy).autoIncludeNewModels, false);
 });
 test("cost policy never erases paid intent or pins and current expired price blocks enabling", () => {

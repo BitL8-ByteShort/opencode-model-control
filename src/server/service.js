@@ -251,7 +251,7 @@ export class ControlService {
 
   getState() {
     return {
-      schemaVersion: 3,
+      schemaVersion: 4,
       settingsRevision: this.settingsRevision,
       catalogRevision: this.catalog.revision,
       blockedRoles: blockedRoles(this.catalog, this.settings),
