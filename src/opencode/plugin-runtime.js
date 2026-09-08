@@ -264,13 +264,22 @@ function positiveRate(value) {
         typeof value === "object" &&
         Object.values(value).some(positiveRate);
 }
-function optionsMatch(options, api, depth = 0) {
+function optionsMatch(options, api, depth = 0, allowOpaqueFetch = false) {
   if (!options || typeof options !== "object") return true;
   if (depth > 12) return false;
   for (const [key, value] of Object.entries(options)) {
     if (/^(headers|apiKey|token|accessToken|credentials|timeout)$/i.test(key))
       continue;
-    if (/^(fetch|dispatcher|proxy|proxyUrl)$/i.test(key)) return false;
+    if (/^(fetch|dispatcher|proxy|proxyUrl)$/i.test(key)) {
+      if (
+        allowOpaqueFetch &&
+        depth === 0 &&
+        /^fetch$/i.test(key) &&
+        typeof value === "function"
+      )
+        continue;
+      return false;
+    }
     if (/^(baseURL|baseUrl|url|endpoint|apiEndpoint)$/i.test(key)) {
       const normalized = normalizeApiIdentity({ ...api, url: value });
       if (
@@ -624,7 +633,12 @@ export function createMediaRoutingHooks({
         `${actual?.providerID}/${actual?.id}` !== route.id ||
         !identityMatches(selected.api, actual?.api) ||
         !hostSupports(actual, route.requirements) ||
-        !optionsMatch(input.provider?.options, selected.api) ||
+        !optionsMatch(
+          input.provider?.options,
+          selected.api,
+          0,
+          current.settings.costPolicy === "known-cost",
+        ) ||
         !optionsMatch(actual?.options, selected.api) ||
         !optionsMatch(output?.options, selected.api)
       )

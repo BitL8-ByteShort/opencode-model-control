@@ -365,12 +365,29 @@ test("effective provider mismatch or a custom transport cannot bypass endpoint i
   const o = await f.turn();
   for (const mutate of [
     (i) => (i.provider.id = "other"),
-    (i) => (i.provider.options.fetch = () => {}),
     (i) => (i.model.options.fetch = () => {}),
   ])
     await assert.rejects(f.dispatch(o, "child", mutate), {
       code: "OMC_DISPATCH_IDENTITY_CONFLICT",
     });
+});
+test("free policy does not certify an opaque provider fetch", async () => {
+  const f = fixture();
+  const o = await f.turn();
+  await assert.rejects(
+    f.dispatch(o, "child", (i) => {
+      i.provider.options.fetch = async () => new Response("{}");
+    }),
+    { code: "OMC_DISPATCH_IDENTITY_CONFLICT" },
+  );
+});
+test("provider-owned authentication fetch is accepted when the exact binding matches", async () => {
+  const f = fixture();
+  f.settings.costPolicy = "known-cost";
+  const o = await f.turn();
+  await f.dispatch(o, "child", (i) => {
+    i.provider.options.fetch = async () => new Response("{}");
+  });
 });
 test("background review acknowledgement cannot authorize retained repair", async () => {
   const f = fixture();
