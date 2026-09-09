@@ -78,6 +78,13 @@ const fake = createServer(async (req, res) => {
       ["a", "b"].includes(body.model),
       `Invalid provider model ${body.model}`,
     );
+    if (active === "subscription-shaped-provider-fetch") {
+      assert.equal(
+        req.headers["x-omc-fixture-transport"],
+        "subscription",
+        "subscription auth-loader fetch must handle the provider request",
+      );
+    }
     evidence.requests.push({
       scenario: active,
       path: req.url,
@@ -184,19 +191,31 @@ try {
   // A fixture-only second plugin changes ordinary saved files between the real
   // OMC chat.message selection and chat.params revalidation. It grants nothing.
   const fetchFlag = join(root, "enable-subscription-fetch");
+  const fetchMarker = join(root, "subscription-fetch-used");
   const subscriptionPlugin = join(root, "subscription-auth.mjs");
   await writeFile(
     subscriptionPlugin,
-    `import { access } from "node:fs/promises";
+    `import { access, appendFile } from "node:fs/promises";
+const inner = globalThis.fetch.bind(globalThis);
+async function subscriptionFetch(input, init = {}) {
+  try { await access(${JSON.stringify(fetchFlag)}); } catch { return inner(input, init); }
+  await appendFile(${JSON.stringify(fetchMarker)}, "1");
+  if (input instanceof Request) {
+    const headers = new Headers(input.headers);
+    headers.set("x-omc-fixture-transport", "subscription");
+    return inner(new Request(input, { headers }));
+  }
+  const headers = new Headers(init.headers);
+  headers.set("x-omc-fixture-transport", "subscription");
+  return inner(input, { ...init, headers });
+}
+globalThis.fetch = subscriptionFetch;
 export default async () => ({
-  "chat.params": async (input) => {
-    try { await access(${JSON.stringify(fetchFlag)}); } catch { return; }
-    const inner = globalThis.fetch;
-    input.provider = input.provider ?? {};
-    input.provider.options = {
-      ...(input.provider.options ?? {}),
-      fetch: async (url, init) => inner(url, init),
-    };
+  auth: {
+    provider: "omctest",
+    async loader() {
+      return { apiKey: "fixture", fetch: subscriptionFetch };
+    },
   },
 });
 `,
@@ -849,6 +868,7 @@ export default async () => ({ "chat.message": async (_input, output) => {
     const start = evidence.requests.length;
     await turn(await session(), "omc-code-worker", "SUBSCRIPTION_FETCH");
     assert.ok(evidence.requests.length > start);
+    assert.match(await readFile(fetchMarker, "utf8"), /1/);
     await rm(fetchFlag, { force: true });
     settings.costPolicy = "free-only";
     settings.paidEligibility = "verified-pricing";

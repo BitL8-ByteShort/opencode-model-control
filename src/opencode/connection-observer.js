@@ -92,8 +92,11 @@ export function observeConnections({
           ? "declared-endpoint"
           : "host-managed",
         inventoryObservedAt: observedAt,
-        entitlement: "not-reported",
-        quota: null,
+        entitlement:
+          prior?.entitlement === "reported-revoked"
+            ? "reported-revoked"
+            : "not-reported",
+        quota: prior?.quota ?? null,
       }),
     );
   }

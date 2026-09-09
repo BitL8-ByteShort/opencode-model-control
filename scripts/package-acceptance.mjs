@@ -206,7 +206,7 @@ try {
     assert.equal(proof.tarballSha256, sha256);
     assert.equal(proof.host, host.version);
     assert.equal(proof.passed, true);
-    assert.equal(proof.scenarios.length, 19);
+    assert.equal(proof.scenarios.length, 20);
     evidence.mockedProviderRequests += proof.requests.length;
     evidence.hostAcceptance.push({
       host: proof.host,

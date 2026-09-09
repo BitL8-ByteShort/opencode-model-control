@@ -93,6 +93,31 @@ test("one configured slot is one connection; auth methods do not invent billing"
   assert.equal(xai.transportVisibility, "host-managed");
 });
 
+test("live observation preserves reported-revoked entitlement for the same slot", () => {
+  const prior = observeConnections({
+    scopeId,
+    now,
+    providers: [
+      provider("xai", {
+        "grok-4.6": { id: "grok-4.6", npm: "@ai-sdk/xai", url: "" },
+      }),
+    ],
+  });
+  prior[0].entitlement = "reported-revoked";
+  const next = observeConnections({
+    scopeId,
+    now,
+    previousConnections: prior,
+    providers: [
+      provider("xai", {
+        "grok-4.6": { id: "grok-4.6", npm: "@ai-sdk/xai", url: "" },
+      }),
+    ],
+  });
+  assert.equal(next[0].id, prior[0].id);
+  assert.equal(next[0].entitlement, "reported-revoked");
+});
+
 test("user billing declarations are labelled and invalidated when the binding changes", () => {
   const [xai] = observeConnections({
     scopeId,

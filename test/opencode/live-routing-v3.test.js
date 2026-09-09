@@ -6,6 +6,7 @@ import {
   assertExplicitAssignments,
   validateCatalog,
 } from "../../src/core/index.js";
+import { deriveConnectionId } from "../../src/core/connections.js";
 import {
   createMediaRoutingHooks,
   resolveMediaWorker,
@@ -19,7 +20,7 @@ import { join } from "node:path";
 
 const A = "opencode/ling-3.0-flash-fin-free",
   B = "opencode/nemotron-3.5-lightning-free";
-function fixture({ connections = [] } = {}) {
+function fixture({ connections = [], connectionScopeId } = {}) {
   const catalog = loadModelCatalog();
   for (const m of catalog.models)
     m.api = {
@@ -62,7 +63,12 @@ function fixture({ connections = [] } = {}) {
     },
   };
   const hooks = createMediaRoutingHooks({
-    loadPolicy: async () => ({ catalog, settings, connections }),
+    loadPolicy: async () => ({
+      catalog,
+      settings,
+      connections,
+      connectionScopeId,
+    }),
     client,
     directory: "/isolated",
   });
@@ -238,10 +244,12 @@ test("ordinary resumed worker adopts live policy while reviewed repair retains e
   );
 });
 test("dispatch rejects a missing pinned connection and a revoked connection", async () => {
+  const connectionScopeId = "11111111-1111-4111-8111-111111111111";
   const f = fixture({
+    connectionScopeId,
     connections: [
       {
-        id: "a".repeat(32),
+        id: deriveConnectionId(connectionScopeId, "opencode"),
         providerId: "opencode",
         bindingRevision: "b".repeat(32),
         authKind: "unknown",
@@ -554,7 +562,7 @@ test("usage attribution completes after a successful owned assistant message", a
       },
     },
   });
-  await new Promise((resolve) => setTimeout(resolve, 50));
+  await hooks.flushAttribution();
   const attributed = await readUsageAttribution({ settingsPath });
   assert.equal(attributed.observations.length, 1);
   assert.equal(attributed.observations[0].tokens.input, 11);

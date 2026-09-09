@@ -386,6 +386,12 @@ export function createMediaRoutingHooks({
   recordUsage = false,
   settingsPath = resolveSettingsPath(),
 } = {}) {
+  const attributionWork = [];
+  const queueAttribution = (work) => {
+    const tracked = Promise.resolve(work).catch(() => {});
+    attributionWork.push(tracked);
+    return tracked;
+  };
   const routes = new Map();
   const readOnlySessions = new Set();
   const workflows = new Map();
@@ -530,13 +536,15 @@ export function createMediaRoutingHooks({
         ) {
           completed.set(info.sessionID, route.messageID);
           if (recordUsage) {
-            void completeAttribution({
-              settingsPath,
-              sessionID: info.sessionID,
-              messageID: route.messageID,
-              info,
-              route,
-            }).catch(() => {});
+            await queueAttribution(
+              completeAttribution({
+                settingsPath,
+                sessionID: info.sessionID,
+                messageID: route.messageID,
+                info,
+                route,
+              }),
+            );
           }
           if (route.repair) route.repair.active = false;
           const operation = background.get(info.sessionID);
@@ -798,12 +806,14 @@ export function createMediaRoutingHooks({
       )
         fail("OMC_DISPATCH_PRICING_CONFLICT");
       if (recordUsage) {
-        void captureAttribution({
-          settingsPath,
-          input,
-          selected,
-          current,
-        }).catch(() => {});
+        await queueAttribution(
+          captureAttribution({
+            settingsPath,
+            input,
+            selected,
+            current,
+          }),
+        );
       }
     },
     async "permission.ask"(input, output) {
@@ -913,6 +923,9 @@ export function createMediaRoutingHooks({
         routes.get(childID)?.agent === operation.agent
       )
         operation.slash.completed = true;
+    },
+    async flushAttribution() {
+      await Promise.all(attributionWork.splice(0));
     },
   };
 }
