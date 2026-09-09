@@ -535,8 +535,14 @@ export function createMediaRoutingHooks({
           !info.error
         ) {
           completed.set(info.sessionID, route.messageID);
+          if (route.repair) route.repair.active = false;
+          const operation = background.get(info.sessionID);
+          if (operation) {
+            completeChild(operation, info.sessionID);
+            background.delete(info.sessionID);
+          }
           if (recordUsage) {
-            await queueAttribution(
+            queueAttribution(
               completeAttribution({
                 settingsPath,
                 sessionID: info.sessionID,
@@ -545,12 +551,6 @@ export function createMediaRoutingHooks({
                 route,
               }),
             );
-          }
-          if (route.repair) route.repair.active = false;
-          const operation = background.get(info.sessionID);
-          if (operation) {
-            completeChild(operation, info.sessionID);
-            background.delete(info.sessionID);
           }
         }
         return;
@@ -806,7 +806,7 @@ export function createMediaRoutingHooks({
       )
         fail("OMC_DISPATCH_PRICING_CONFLICT");
       if (recordUsage) {
-        await queueAttribution(
+        queueAttribution(
           captureAttribution({
             settingsPath,
             input,
