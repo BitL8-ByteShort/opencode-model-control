@@ -183,6 +183,24 @@ try {
   });
   // A fixture-only second plugin changes ordinary saved files between the real
   // OMC chat.message selection and chat.params revalidation. It grants nothing.
+  const fetchFlag = join(root, "enable-subscription-fetch");
+  const subscriptionPlugin = join(root, "subscription-auth.mjs");
+  await writeFile(
+    subscriptionPlugin,
+    `import { access } from "node:fs/promises";
+export default async () => ({
+  "chat.params": async (input) => {
+    try { await access(${JSON.stringify(fetchFlag)}); } catch { return; }
+    const inner = globalThis.fetch;
+    input.provider = input.provider ?? {};
+    input.provider.options = {
+      ...(input.provider.options ?? {}),
+      fetch: async (url, init) => inner(url, init),
+    };
+  },
+});
+`,
+  );
   const interleavePlugin = join(root, "interleave.mjs");
   await writeFile(
     interleavePlugin,
@@ -214,6 +232,7 @@ export default async () => ({ "chat.message": async (_input, output) => {
     },
     agent: buildOpenCodeConfig().agent,
     plugin: [
+      pathToFileURL(subscriptionPlugin).href,
       pathToFileURL(join(targetRoot, "src/opencode/plugin.js")).href,
       pathToFileURL(interleavePlugin).href,
     ],
@@ -821,6 +840,19 @@ export default async () => ({ "chat.message": async (_input, output) => {
     assert.ok(result.name || result.info?.error);
     assert.equal(evidence.requests.length - start, 1);
     handler = async () => ({});
+  });
+  await check("subscription-shaped-provider-fetch", async () => {
+    settings.costPolicy = "known-cost";
+    settings.paidEligibility = "configured-connections";
+    await pin("b");
+    await writeFile(fetchFlag, "1");
+    const start = evidence.requests.length;
+    await turn(await session(), "omc-code-worker", "SUBSCRIPTION_FETCH");
+    assert.ok(evidence.requests.length > start);
+    await rm(fetchFlag, { force: true });
+    settings.costPolicy = "free-only";
+    settings.paidEligibility = "verified-pricing";
+    await pin("a");
   });
   evidence.passed = true;
 } finally {

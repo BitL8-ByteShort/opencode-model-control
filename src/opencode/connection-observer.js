@@ -20,6 +20,30 @@ function previousByProvider(previousConnections) {
   );
 }
 
+export function providersFromLiveModels(models) {
+  const byProvider = new Map();
+  for (const model of models ?? []) {
+    const providerId =
+      typeof model?.provider === "string"
+        ? model.provider
+        : String(model?.id ?? "").split("/")[0];
+    if (!providerId) continue;
+    const key =
+      typeof model?.id === "string" && model.id.startsWith(`${providerId}/`)
+        ? model.id.slice(providerId.length + 1)
+        : String(model?.api?.id ?? model?.id ?? "");
+    if (!key) continue;
+    const slot = byProvider.get(providerId) ?? { id: providerId, models: {} };
+    slot.models[key] = {
+      id: key,
+      providerID: providerId,
+      api: model.api,
+    };
+    byProvider.set(providerId, slot);
+  }
+  return [...byProvider.values()];
+}
+
 export function observeConnections({
   providers,
   previousConnections = [],

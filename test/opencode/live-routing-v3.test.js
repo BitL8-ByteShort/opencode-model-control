@@ -10,6 +10,12 @@ import {
   createMediaRoutingHooks,
   resolveMediaWorker,
 } from "../../src/opencode/plugin-runtime.js";
+import {
+  readUsageAttribution,
+} from "../../src/server/usage-attribution-store.js";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const A = "opencode/ling-3.0-flash-fin-free",
   B = "opencode/nemotron-3.5-lightning-free";
@@ -231,13 +237,47 @@ test("ordinary resumed worker adopts live policy while reviewed repair retains e
     (e) => e.code === "OMC_ROUTE_UNAVAILABLE",
   );
 });
+test("dispatch rejects a missing pinned connection and a revoked connection", async () => {
+  const f = fixture({
+    connections: [
+      {
+        id: "a".repeat(32),
+        providerId: "opencode",
+        bindingRevision: "b".repeat(32),
+        authKind: "unknown",
+        billing: { kind: "unknown", source: "unknown", observedAt: null },
+        transportVisibility: "host-managed",
+        inventoryObservedAt: new Date().toISOString(),
+        entitlement: "reported-revoked",
+        quota: null,
+      },
+    ],
+  });
+  await assert.rejects(f.turn(), (error) =>
+    ["OMC_ROUTE_UNAVAILABLE", "OMC_DISPATCH_IDENTITY_CONFLICT"].includes(
+      error.code,
+    ),
+  );
+  const missing = fixture();
+  missing.settings.roleConnections["code-worker"] = {
+    connectionId: "a".repeat(32),
+    bindingRevision: "b".repeat(32),
+  };
+  missing.settings.costPolicy = "known-cost";
+  await assert.rejects(missing.turn(), (error) =>
+    ["OMC_ROUTE_UNAVAILABLE", "OMC_DISPATCH_IDENTITY_CONFLICT"].includes(
+      error.code,
+    ),
+  );
+});
+
 test("repair stops when the original connection binding switches billing", async () => {
   const connection = {
     id: "a".repeat(32),
     providerId: "opencode",
     bindingRevision: "b".repeat(32),
     authKind: "unknown",
-    billing: { kind: "subscription", source: "user-declared", observedAt: null },
+    billing: { kind: "unknown", source: "unknown", observedAt: null },
     transportVisibility: "host-managed",
     inventoryObservedAt: new Date().toISOString(),
     entitlement: "not-reported",
@@ -428,6 +468,100 @@ test("free policy does not certify an opaque provider fetch", async () => {
     { code: "OMC_DISPATCH_IDENTITY_CONFLICT" },
   );
 });
+test("usage attribution completes after a successful owned assistant message", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "omc-attr-"));
+  const settingsPath = join(directory, "settings.json");
+  const catalog = loadModelCatalog();
+  for (const m of catalog.models)
+    m.api = {
+      id: m.id.split("/").slice(1).join("/"),
+      npm: "@ai-sdk/openai-compatible",
+      url: "https://example.invalid/v1",
+      urlValid: true,
+    };
+  const settings = createDefaultSettings(catalog);
+  const host = catalog.models.map((m) => ({
+    id: m.api.id,
+    providerID: "opencode",
+    api: m.api,
+    capabilities: {
+      toolcall: m.toolCall !== false,
+      input: Object.fromEntries(m.modalities.input.map((x) => [x, true])),
+      output: { text: true },
+    },
+    options: {},
+    cost: { input: 0, output: 0 },
+  }));
+  const hooks = createMediaRoutingHooks({
+    loadPolicy: async () => ({ catalog, settings }),
+    client: {
+      config: {
+        providers: async () => ({
+          data: {
+            providers: [
+              {
+                id: "opencode",
+                models: Object.fromEntries(host.map((m) => [m.id, m])),
+              },
+            ],
+          },
+        }),
+      },
+    },
+    directory: "/isolated",
+    recordUsage: true,
+    settingsPath,
+  });
+  const output = {
+    message: {
+      id: "msg-1",
+      agent: "omc-code-worker",
+      model: { providerID: "opencode", modelID: "big-pickle" },
+    },
+    parts: [{ type: "text", text: "Implement requested change" }],
+  };
+  await hooks["chat.message"](
+    { agent: "omc-code-worker", sessionID: "child" },
+    output,
+  );
+  const model = structuredClone(
+    host.find((m) => m.id === output.message.model.modelID),
+  );
+  await hooks["chat.params"](
+    {
+      sessionID: "child",
+      agent: output.message.agent,
+      model,
+      provider: { id: "opencode", options: {} },
+      message: output.message,
+    },
+    { options: {} },
+  );
+  await hooks.event({
+    event: {
+      type: "message.updated",
+      properties: {
+        info: {
+          sessionID: "child",
+          role: "assistant",
+          agent: "omc-code-worker",
+          parentID: output.message.id,
+          time: { completed: Date.now() },
+          finish: "stop",
+          tokens: { input: 11, output: 3, reasoning: 0, cache: { read: 0, write: 0 } },
+          cost: 0,
+        },
+      },
+    },
+  });
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  const attributed = await readUsageAttribution({ settingsPath });
+  assert.equal(attributed.observations.length, 1);
+  assert.equal(attributed.observations[0].tokens.input, 11);
+  assert.equal(attributed.observations[0].recordedCost.amount, 0);
+  await rm(directory, { recursive: true, force: true });
+});
+
 test("provider-owned authentication fetch is accepted when the exact binding matches", async () => {
   const f = fixture();
   f.settings.costPolicy = "known-cost";

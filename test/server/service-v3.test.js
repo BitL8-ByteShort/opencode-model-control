@@ -32,6 +32,14 @@ async function setup(t, options = {}) {
   t.after(() => service.close());
   return { service, settingsPath, directory };
 }
+test("catalog refresh persists observed connections from live models", async (t) => {
+  const { service } = await setup(t);
+  const connections = service.getState().connections;
+  assert.ok(Array.isArray(connections));
+  assert.equal(connections.some((item) => item.providerId === "new"), true);
+  assert.equal(connections.find((item) => item.providerId === "new").authKind, "unknown");
+});
+
 test("startup and periodic catalog refresh enroll new models without creating saved intent", async (t) => {
   let tick,
     cleared = false;

@@ -88,6 +88,7 @@ export async function readControlSnapshot({
       catalog,
       settings,
       connections: connections.connections,
+      connectionScopeId: connections.scopeId,
       connectionRevision: connections.revision,
       settingsExists: raw !== undefined,
       catalogExists: savedCatalog !== null,

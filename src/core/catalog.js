@@ -357,6 +357,7 @@ export function eligibleModelsForRole({
   role,
   modalities = ["text"],
   access = "read",
+  connections,
 }) {
   if (!MODEL_ROLES.includes(role)) {
     throw routerError("INVALID_ROLE", "The requested model role is unsupported.");
@@ -379,15 +380,21 @@ export function eligibleModelsForRole({
   }
 
   return validateCatalog(catalog).models
-    .filter((model) =>
-      resolveEligibility({
+    .filter((model) => {
+      const providerId = model.id.slice(0, model.id.indexOf("/"));
+      const connection = Array.isArray(connections)
+        ? connections.find((item) => item.providerId === providerId) ?? null
+        : null;
+      return resolveEligibility({
         model,
+        connection,
+        connections,
         settings,
         role,
         modalities,
         access,
-      }).allowed,
-    )
+      }).allowed;
+    })
     .sort((left, right) =>
       compareEligibleModels(left, right, role, costPreference),
     );

@@ -115,6 +115,41 @@ test("disabled models stay blocked; binding changes block pins; disable does not
   assert.ok(changed.blockingReasons.includes("connection-binding-changed"));
 });
 
+test("revoked and missing pinned connections are blocked when inventory is known", () => {
+  const catalog = loadModelCatalog();
+  const model = catalog.models[0];
+  const settings = createDefaultSettings(catalog);
+  settings.costPolicy = "known-cost";
+  settings.paidEligibility = "configured-connections";
+  const connection = {
+    id: "a".repeat(32),
+    providerId: model.id.split("/")[0],
+    bindingRevision: "b".repeat(32),
+    entitlement: "reported-revoked",
+  };
+  assert.ok(
+    resolveEligibility({
+      model,
+      settings,
+      connection,
+      connections: [connection],
+    }).blockingReasons.includes("entitlement-revoked"),
+  );
+  settings.roleConnections.orchestrator = {
+    connectionId: "a".repeat(32),
+    bindingRevision: "b".repeat(32),
+  };
+  assert.ok(
+    resolveEligibility({
+      model,
+      settings,
+      role: "orchestrator",
+      connection: null,
+      connections: [],
+    }).blockingReasons.includes("connection-binding-changed"),
+  );
+});
+
 test("configured-connections enrolls unknown-priced models into role eligibility", () => {
   const catalog = structuredClone(loadModelCatalog());
   const model = paidUnknown(catalog, {

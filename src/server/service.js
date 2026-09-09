@@ -39,6 +39,15 @@ import {
   settingsConflict,
 } from "./settings-store.js";
 import { readControlSnapshot, writeRefreshStatus } from "./state-snapshot.js";
+import {
+  readConnectionSnapshot,
+  writeConnectionSnapshot,
+} from "./connection-store.js";
+import {
+  observeConnections,
+  providersFromLiveModels,
+} from "../opencode/connection-observer.js";
+import { applyBillingDeclarations } from "../core/connections.js";
 import { acquireFileLock, withStateLock } from "./state-lock.js";
 import {
   readModelsDevCache,
@@ -98,19 +107,28 @@ function validateRuntimeQualificationRequest(input) {
   return input.modelId.trim();
 }
 
-function modelBlockReasons(model, settings) {
+function modelBlockReasons(model, settings, connections) {
   const reasons = [];
   if (!modelEnabled(settings, model.id)) reasons.push("disabled");
   if (!model.available || settings.modelControls[model.id]?.available === false)
     reasons.push("unavailable");
-  const eligibility = resolveEligibility({ model, settings });
+  const providerId = model.id.slice(0, model.id.indexOf("/"));
+  const connection = Array.isArray(connections)
+    ? connections.find((item) => item.providerId === providerId) ?? null
+    : null;
+  const eligibility = resolveEligibility({
+    model,
+    settings,
+    connection,
+    connections,
+  });
   reasons.push(...eligibility.blockingReasons);
   return reasons;
 }
 
-function publicCatalog(catalog, settings) {
+function publicCatalog(catalog, settings, connections) {
   return catalog.models.map((model) => {
-    const blockedReasons = modelBlockReasons(model, settings);
+    const blockedReasons = modelBlockReasons(model, settings, connections);
     return {
       ...model,
       displayName: model.label,
@@ -129,7 +147,7 @@ function publicCatalog(catalog, settings) {
   });
 }
 
-function blockedRoles(catalog, settings) {
+function blockedRoles(catalog, settings, connections) {
   return Object.fromEntries(
     Object.entries(ROLE_REQUIREMENTS).map(([role, requirement]) => {
       const selected = settings.roleAssignments[role];
@@ -139,12 +157,13 @@ function blockedRoles(catalog, settings) {
         role,
         modalities: [...requirement.modalities],
         access: requirement.access,
+        connections,
       });
       if (selected === "auto")
         return [role, eligible.length ? [] : ["no-eligible-model"]];
       const model = catalog.models.find((m) => m.id === selected);
       if (!model) return [role, ["unavailable"]];
-      const reasons = modelBlockReasons(model, settings);
+      const reasons = modelBlockReasons(model, settings, connections);
       if (
         !modelSupports({
           model,
@@ -205,6 +224,7 @@ export class ControlService {
     this.runtimeQualificationRunner = runtimeQualificationRunner;
     this.baseCatalog = loadModelCatalog();
     this.catalog = unavailableCatalog(this.baseCatalog);
+    this.connections = [];
     this.hasLiveSnapshot = false;
     this.settings = createDefaultSettings(this.catalog);
     this.openCode = {
@@ -254,7 +274,11 @@ export class ControlService {
       schemaVersion: 4,
       settingsRevision: this.settingsRevision,
       catalogRevision: this.catalog.revision,
-      blockedRoles: blockedRoles(this.catalog, this.settings),
+      blockedRoles: blockedRoles(
+        this.catalog,
+        this.settings,
+        this.connections,
+      ),
       system: {
         localOnly: true,
         freeOnly: this.settings.costPolicy === "free-only",
@@ -289,7 +313,8 @@ export class ControlService {
               .join(" ") || null,
         },
       },
-      catalog: publicCatalog(this.catalog, this.settings),
+      catalog: publicCatalog(this.catalog, this.settings, this.connections),
+      connections: this.connections,
       settings: this.settings,
     };
   }
@@ -378,6 +403,29 @@ export class ControlService {
         this.catalog = await writeCatalogSnapshot(merged, {
           path: this.catalogSnapshotPath,
         });
+        const previousConnections = await readConnectionSnapshot({
+          settingsPath: this.settingsPath,
+          locked: true,
+        });
+        this.connections = (
+          await writeConnectionSnapshot({
+            settingsPath: this.settingsPath,
+            locked: true,
+            snapshot: {
+              schemaVersion: 1,
+              scopeId: previousConnections.scopeId,
+              connections: applyBillingDeclarations(
+                observeConnections({
+                  providers: providersFromLiveModels(models),
+                  previousConnections: previousConnections.connections,
+                  scopeId: previousConnections.scopeId,
+                  now: this.now(),
+                }),
+                this.settings.billingDeclarations,
+              ),
+            },
+          })
+        ).connections;
         const complete = discovered.complete === true;
         this.refreshState = {
           attemptedAt,
@@ -424,6 +472,7 @@ export class ControlService {
     });
     this.catalog = snapshot.catalog;
     this.settings = snapshot.settings;
+    this.connections = snapshot.connections ?? [];
     this.settingsRevision = snapshot.settingsRevision;
     this.refreshState = snapshot.refresh;
     this.hasLiveSnapshot = Boolean(snapshot.refresh);
@@ -461,7 +510,12 @@ export class ControlService {
           this.settings.roleAssignments[role],
       );
       try {
-        assertExplicitAssignments(settings, this.catalog, editedRoles);
+        assertExplicitAssignments(
+          settings,
+          this.catalog,
+          editedRoles,
+          this.connections,
+        );
         for (const [id, control] of Object.entries(settings.modelControls)) {
           if (
             control.selection !== "enabled" ||

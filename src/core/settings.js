@@ -193,6 +193,7 @@ export function assertExplicitAssignments(
   settings,
   catalog,
   roles = MODEL_ROLES,
+  connections,
 ) {
   for (const role of roles) {
     const modelId = settings.roleAssignments[role];
@@ -204,6 +205,7 @@ export function assertExplicitAssignments(
       role,
       modalities: [...requirement.modalities],
       access: requirement.access,
+      connections,
     });
     if (!eligible.some((model) => model.id === modelId)) {
       invalidSettings(

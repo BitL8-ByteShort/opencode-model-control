@@ -9,6 +9,7 @@ import { resolveSettingsPath } from "../server/settings-store.js";
 import { readControlSnapshot } from "../server/state-snapshot.js";
 import { normalizeApiIdentity } from "../core/pricing.js";
 import { classifyRouteRequest } from "../server/task-classifier.js";
+import { observeConnections } from "./connection-observer.js";
 
 const ROUTER_AGENT = "omc-router";
 const MEDIA_MODALITIES = Object.freeze(["image", "audio", "video", "pdf"]);
@@ -303,6 +304,49 @@ function optionsMatch(options, api, depth = 0, allowOpaqueFetch = false) {
   return true;
 }
 
+function applyLiveConnections(current, host) {
+  if (!current.connectionScopeId || !Array.isArray(host?.providers)) return;
+  current.connections = observeConnections({
+    providers: host.providers,
+    previousConnections: current.connections,
+    scopeId: current.connectionScopeId,
+  });
+}
+
+async function completeAttribution({ settingsPath, sessionID, messageID, info, route }) {
+  const {
+    attributionEventKey,
+    readOrCreateAttributionSalt,
+    upsertUsageObservation,
+  } = await import("../server/usage-attribution-store.js");
+  const salt = await readOrCreateAttributionSalt(settingsPath);
+  const tokens = info?.tokens ?? {};
+  await upsertUsageObservation({
+    settingsPath,
+    pending: false,
+    observation: {
+      eventKey: attributionEventKey(salt, sessionID, messageID),
+      observedAt: new Date().toISOString(),
+      connectionId: route?.connectionId ?? null,
+      bindingRevision: route?.bindingRevision ?? null,
+      billingKind: route?.billingKind ?? "unknown",
+      billingSource: route?.billingSource ?? "unknown",
+      tokens: {
+        input: tokens.input ?? null,
+        output: tokens.output ?? null,
+        reasoning: tokens.reasoning ?? null,
+        cacheRead: tokens.cache?.read ?? null,
+        cacheWrite: tokens.cache?.write ?? null,
+      },
+      recordedCost:
+        typeof info?.cost === "number"
+          ? { amount: info.cost, currency: null }
+          : null,
+      priceSnapshotId: route?.priceSnapshotId ?? null,
+    },
+  });
+}
+
 async function captureAttribution({ settingsPath, input, selected, current }) {
   const {
     attributionEventKey,
@@ -392,6 +436,7 @@ export function createMediaRoutingHooks({
         catalog,
         settings: migrateSettings(value.settings, catalog),
         connections: value.connections ?? [],
+        connectionScopeId: value.connectionScopeId,
       };
     } catch {
       fail("OMC_MEDIA_POLICY_UNAVAILABLE");
@@ -412,6 +457,7 @@ export function createMediaRoutingHooks({
           models.set(`${provider.id}/${id}`, model);
         }
       }
+      models.providers = result.data.providers;
       return models;
     } catch {
       fail("OMC_HOST_INVENTORY_UNAVAILABLE");
@@ -427,7 +473,11 @@ export function createMediaRoutingHooks({
     const retainedID = typeof retained === "string" ? retained : retained?.id;
     const configured =
       retainedID ?? current.settings.roleAssignments[requirements.role];
-    const candidates = eligibleModelsForRole({ ...current, ...requirements });
+    const candidates = eligibleModelsForRole({
+      ...current,
+      ...requirements,
+      connections: current.connections,
+    });
     const selected =
       configured === AUTO_ASSIGNMENT
         ? candidates.find(
@@ -449,13 +499,15 @@ export function createMediaRoutingHooks({
       retained && typeof retained === "object"
         ? retained
         : current.settings.roleConnections?.[requirements.role];
-    if (
-      expected?.connectionId &&
-      expected?.bindingRevision &&
-      connection &&
-      (connection.id !== expected.connectionId ||
-        connection.bindingRevision !== expected.bindingRevision)
-    )
+    if (expected?.connectionId) {
+      if (!connection) fail("OMC_DISPATCH_IDENTITY_CONFLICT");
+      if (
+        connection.id !== expected.connectionId ||
+        connection.bindingRevision !== expected.bindingRevision
+      )
+        fail("OMC_DISPATCH_IDENTITY_CONFLICT");
+    }
+    if (connection?.entitlement === "reported-revoked")
       fail("OMC_DISPATCH_IDENTITY_CONFLICT");
     return { ...selected, connection };
   }
@@ -477,6 +529,15 @@ export function createMediaRoutingHooks({
           !info.error
         ) {
           completed.set(info.sessionID, route.messageID);
+          if (recordUsage) {
+            void completeAttribution({
+              settingsPath,
+              sessionID: info.sessionID,
+              messageID: route.messageID,
+              info,
+              route,
+            }).catch(() => {});
+          }
           if (route.repair) route.repair.active = false;
           const operation = background.get(info.sessionID);
           if (operation) {
@@ -537,6 +598,7 @@ export function createMediaRoutingHooks({
         };
         const current = await policy();
         const host = await inventory();
+        applyLiveConnections(current, host);
         const selected = select(
           current,
           host,
@@ -567,6 +629,9 @@ export function createMediaRoutingHooks({
             selected.connection?.bindingRevision ??
             authorizedRepair?.bindingRevision ??
             null,
+          billingKind: selected.connection?.billing?.kind ?? "unknown",
+          billingSource: selected.connection?.billing?.source ?? "unknown",
+          priceSnapshotId: selected.pricing?.digest ?? null,
           requirements,
           agent: output.message.agent,
           messageID: output.message.id,
@@ -675,10 +740,13 @@ export function createMediaRoutingHooks({
         fail("OMC_DISPATCH_ROUTE_MISSING");
       const current = await policy();
       const host = await inventory();
+      applyLiveConnections(current, host);
       if (
-        !eligibleModelsForRole({ ...current, ...route.requirements }).some(
-          (m) => m.id === route.id,
-        )
+        !eligibleModelsForRole({
+          ...current,
+          ...route.requirements,
+          connections: current.connections,
+        }).some((m) => m.id === route.id)
       )
         fail();
       const selected = select(

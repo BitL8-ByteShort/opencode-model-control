@@ -44,6 +44,7 @@ function modelSupports({ model, role, modalities, access }) {
 export function resolveEligibility({
   model,
   connection = null,
+  connections,
   settings,
   role = null,
   modalities = ["text"],
@@ -81,13 +82,16 @@ export function resolveEligibility({
   const savedBinding = role
     ? settings?.roleConnections?.[role]
     : null;
-  if (
-    savedBinding &&
-    connection &&
-    (savedBinding.connectionId !== connection.id ||
-      savedBinding.bindingRevision !== connection.bindingRevision)
-  )
-    blockingReasons.push("connection-binding-changed");
+  if (savedBinding) {
+    if (!connection) {
+      if (Array.isArray(connections))
+        blockingReasons.push("connection-binding-changed");
+    } else if (
+      savedBinding.connectionId !== connection.id ||
+      savedBinding.bindingRevision !== connection.bindingRevision
+    )
+      blockingReasons.push("connection-binding-changed");
+  }
 
   if (hostInventory && model?.id && !hostInventory.has(model.id))
     blockingReasons.push("host-model-missing");
