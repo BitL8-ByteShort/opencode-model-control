@@ -4,39 +4,93 @@
   "title": "OpenCode Model Control Route Plan",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "route", "assignments", "policy", "reasons"],
+  "required": [
+    "schemaVersion",
+    "route",
+    "assignments",
+    "policy",
+    "reasons"
+  ],
   "properties": {
-    "schemaVersion": { "const": 1 },
-    "route": { "enum": ["direct", "orchestrator", "code-worker", "vision-worker", "reviewer"] },
+    "schemaVersion": {
+      "const": 2
+    },
+    "route": {
+      "enum": [
+        "direct",
+        "orchestrator",
+        "code-worker",
+        "vision-worker",
+        "reviewer"
+      ]
+    },
     "assignments": {
       "type": "array",
       "minItems": 1,
       "maxItems": 4,
-      "items": { "$ref": "#/$defs/assignment" }
+      "items": {
+        "$ref": "#/$defs/assignment"
+      }
     },
     "policy": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["freeOnly", "costPreference", "costPolicy", "maxDelegationDepth", "maxFallbacksPerAssignment", "recursiveDelegation"],
+      "required": [
+        "freeOnly",
+        "costPreference",
+        "costPolicy",
+        "maxDelegationDepth",
+        "maxFallbacksPerAssignment",
+        "recursiveDelegation",
+        "paidEligibility"
+      ],
       "properties": {
-        "freeOnly": { "type": "boolean" },
-        "costPreference": { "enum": ["free-first", "paid-first"] },
-        "costPolicy": { "enum": ["free-only", "known-cost"] },
-        "maxDelegationDepth": { "type": "integer", "minimum": 0, "maximum": 1 },
+        "freeOnly": {
+          "type": "boolean"
+        },
+        "costPreference": {
+          "enum": [
+            "free-first",
+            "paid-first"
+          ]
+        },
+        "costPolicy": {
+          "enum": [
+            "free-only",
+            "known-cost"
+          ]
+        },
+        "maxDelegationDepth": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1
+        },
         "maxFallbacksPerAssignment": {
           "type": "integer",
           "minimum": 0,
           "maximum": 1,
           "description": "Legacy settings key for the maximum review-driven repair passes; it does not enable alternate-model fallback."
         },
-        "recursiveDelegation": { "const": false }
+        "recursiveDelegation": {
+          "const": false
+        },
+        "paidEligibility": {
+          "enum": [
+            "verified-pricing",
+            "configured-connections"
+          ]
+        }
       }
     },
     "reasons": {
       "type": "array",
       "minItems": 1,
       "maxItems": 8,
-      "items": { "type": "string", "minLength": 1, "maxLength": 128 }
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      }
     }
   },
   "$defs": {
@@ -55,11 +109,22 @@
         "selection",
         "access",
         "modalities",
-        "mayDelegate"
+        "mayDelegate",
+        "connectionId",
+        "bindingRevision"
       ],
       "properties": {
-        "role": { "enum": ["orchestrator", "code-worker", "vision-worker", "reviewer"] },
-        "modelId": { "$ref": "#/$defs/modelId" },
+        "role": {
+          "enum": [
+            "orchestrator",
+            "code-worker",
+            "vision-worker",
+            "reviewer"
+          ]
+        },
+        "modelId": {
+          "$ref": "#/$defs/modelId"
+        },
         "fallbackModelId": {
           "type": "null",
           "deprecated": true,
@@ -70,15 +135,49 @@
           "deprecated": true,
           "description": "Legacy contract field retained for compatibility; alternate-model fallback is not executed."
         },
-        "selection": { "enum": ["auto", "explicit"] },
-        "access": { "enum": ["read", "write"] },
+        "selection": {
+          "enum": [
+            "auto",
+            "explicit"
+          ]
+        },
+        "access": {
+          "enum": [
+            "read",
+            "write"
+          ]
+        },
         "modalities": {
           "type": "array",
           "minItems": 1,
           "uniqueItems": true,
-          "items": { "enum": ["text", "image", "audio", "video", "pdf"] }
+          "items": {
+            "enum": [
+              "text",
+              "image",
+              "audio",
+              "video",
+              "pdf"
+            ]
+          }
         },
-        "mayDelegate": { "type": "boolean" }
+        "mayDelegate": {
+          "type": "boolean"
+        },
+        "connectionId": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[a-f0-9]{32}$"
+        },
+        "bindingRevision": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[a-f0-9]{32}$"
+        }
       }
     }
   }

@@ -32,6 +32,7 @@ export function createEditor(raw, requestId = 0) {
     baseline: state.settings,
     draft: state.settings,
     baselineRevision: state.settingsRevision,
+    baselineConnectionRevision: state.connectionRevision,
     requestId,
     saving: null,
   };
@@ -53,6 +54,7 @@ export function receiveSnapshot(editor, raw, requestId) {
           baseline: state.settings,
           draft: state.settings,
           baselineRevision: state.settingsRevision,
+    baselineConnectionRevision: state.connectionRevision,
         }
       : {}),
   };
@@ -72,6 +74,7 @@ export function finishSave(editor, raw, requestId) {
     state,
     baseline: state.settings,
     baselineRevision: state.settingsRevision,
+    baselineConnectionRevision: state.connectionRevision,
     draft: mergeEdits(editor.saving.submitted, editor.draft, state.settings),
     requestId,
     saving: null,
@@ -85,6 +88,7 @@ export function rebaseDraft(editor) {
     ...editor,
     baseline: editor.state.settings,
     baselineRevision: editor.state.settingsRevision,
+    baselineConnectionRevision: editor.state.connectionRevision,
     draft: mergeEdits(editor.baseline, editor.draft, editor.state.settings),
   };
 }

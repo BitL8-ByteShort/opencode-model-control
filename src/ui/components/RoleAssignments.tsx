@@ -9,6 +9,8 @@ import {
   selectRoleModel,
   setCostMode,
   adoptConfiguredPaid,
+  billingLabel,
+  effectiveBilling,
 } from "../model-control.js";
 import { Icon, Panel } from "./Primitives";
 
@@ -102,11 +104,12 @@ export function RoleAssignments({
                     : eligible
                       ? ""
                       : " — enable on selection";
-                  return <option disabled={!assignable} key={model.id} value={model.id}>{modelDisplayName(model)}{suffix}</option>;
+                  return <option disabled={!assignable} key={model.id} value={model.id}>{modelDisplayName(model)} · {model.provider ?? "Configured slot"} · {billingLabel(effectiveBilling(model.connection, settings)?.kind)}{suffix}</option>;
                 })}
               </select>
             </span>
             {settings.roleAssignments[role.key] !== "auto" && modelEligibilityReasons(catalog.find(model => model.id === settings.roleAssignments[role.key]), settings, role.key).length > 0 ? <small className="inline-alert inline-alert--warning">Retained pin: {settings.roleAssignments[role.key]}. {modelEligibilityReasons(catalog.find(model => model.id === settings.roleAssignments[role.key]), settings, role.key).join(" ")} Choose Automatic or another model to replace it.</small> : null}
+            {settings.roleAssignments[role.key] !== "auto" && modelEligibilityReasons(catalog.find(model => model.id === settings.roleAssignments[role.key]), settings, role.key).some(reason => reason.includes("Connection changed") || reason.includes("Connection selection required")) ? <button type="button" onClick={() => updateRole(role.key, settings.roleAssignments[role.key]!)}>Use current connection for {role.label}</button> : null}
             <small className="field__hint" id={`${role.key}-hint`}>{selectHint(role.key)} Selecting a disabled model explicitly enables it for routing.</small>
           </label>
         ))}

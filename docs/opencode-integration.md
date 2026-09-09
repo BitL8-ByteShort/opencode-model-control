@@ -74,7 +74,7 @@ The top-level plugin entry is a canonical absolute `file://` URL to the installe
 
 The connector does not add provider configuration or API keys. When **Make Omc-Router my default agent** is enabled, it adds `default_agent: "omc-router"` only if the OpenCode config has no default. An existing user-owned default is preserved. If this installation previously added the default, disabling the option on a later Connect removes only that receipt-owned value.
 
-The generated config disables `model-control_*` globally and opts only `omc-router` back in. Specialists deny those tools and further delegation. The code worker retains bounded implementation tools, while the independent reviewer is limited to read/search tools and has no shell, edit, or write permission. Managed surface version 2 always generates all four model-free agent definitions. A vision model is selected at dispatch only when current effective text output, tool calls, and the actual media input are confirmed.
+The generated config disables `model-control_*` globally and opts only `omc-router` back in. Specialists deny those tools and further delegation. The code worker retains bounded implementation tools, while the independent reviewer is limited to read/search tools and has no shell, edit, or write permission. Managed surface version 3 always generates all four model-free agent definitions. A vision model is selected at dispatch only when current effective text output, tool calls, and the actual media input are confirmed.
 
 OpenCode's documented surfaces are the source of truth:
 
@@ -125,12 +125,12 @@ If automatic rollback reports that it could not restore the config, stop making 
 
 ## Generated team
 
-| Agent | Mode | Initial intent |
-| --- | --- | --- |
-| `omc-router` | Primary | Text planning, policy lookup, and bounded delegation using saved policy |
-| `omc-code-worker` | Subagent | Bounded implementation and one possible review-driven repair |
+| Agent               | Mode     | Initial intent                                                                            |
+| ------------------- | -------- | ----------------------------------------------------------------------------------------- |
+| `omc-router`        | Primary  | Text planning, policy lookup, and bounded delegation using saved policy                   |
+| `omc-code-worker`   | Subagent | Bounded implementation and one possible review-driven repair                              |
 | `omc-vision-worker` | Subagent | Media-capable, tool-call-capable model assignment that also powers Omc-Router media turns |
-| `omc-reviewer` | Subagent | Independent read-only text or code review; no shell, edit, or write permission |
+| `omc-reviewer`      | Subagent | Independent read-only text or code review; no shell, edit, or write permission            |
 
 Role choices are not benchmark winners. Automatic selection requires discovery, availability, Model Control enablement, permitted pricing, compatible modality, required access/tool capability, and a positive role profile.
 
@@ -147,9 +147,9 @@ The stored settings intentionally separate priority and permission:
 }
 ```
 
-**Free** uses `free-first + free-only`. **Paid** uses `paid-first + known-cost`. Known-cost mode allows both verified-free and known-paid candidates; it does not make unknown pricing eligible.
+**Free** uses `free-first + free-only` and requires verified-free pricing. **Paid** uses `paid-first + known-cost`. Migrated Paid settings retain `paidEligibility: "verified-pricing"`, which allows verified-free and known-paid candidates. Saving the new Paid control explicitly adopts `configured-connections`, allowing configured host routes with unavailable estimates while preserving connection, availability, capability, and disable guards.
 
-**Automatically include new models** defaults on. A model with `selection: "policy"` (including an absent control) follows that setting and the saved Free/Paid policy. Free permits current verified-free evidence only; Paid permits known-paid and verified-free models and prefers paid after hard gates. Saving Paid with auto-include on authorizes future eligible known-paid models without a separate click for every new model. Turning auto-include off excludes policy-following models; explicit enables still apply. An explicit disable always wins. An enable or role pin cannot bypass unknown/expired pricing, availability, capabilities, or cost policy.
+**Automatically include new models** defaults on. A model with `selection: "policy"` (including an absent control) follows that setting and the saved Free/Paid policy. Free permits current verified-free evidence only; migrated Paid permits known-paid and verified-free models and prefers paid after hard gates. Saving configured-connection Paid with auto-include on authorizes future eligible configured routes without a separate click for every new model. Turning auto-include off excludes policy-following models; explicit enables still apply. An explicit disable always wins. An enable or role pin cannot bypass availability, capabilities, connection identity, or the selected cost policy; Free and verified-pricing Paid also require current pricing.
 
 Selecting a compatible role model can explicitly enable it in the draft; selecting Automatic changes the role choice without writing inferred model enables. **Save changes** commits user intent. Refresh never adds inferred controls or rewrites saved intent.
 
@@ -169,7 +169,7 @@ Owned slash subtasks have a narrow, one-shot allowance for OpenCode's synthetic 
 
 ## Saved state and migration
 
-Settings schema v3 stores intent as `selection: "policy" | "enabled" | "disabled"`, plus optional user availability exclusions; effective eligibility is derived separately. Legacy v0/v1/v2 Boolean controls migrate to explicit choices while preserving disables, Paid policy, pins (including absent model IDs), workflow bounds, and default-agent preference. Migration first saves an exact private `settings.json.v<old-version>.backup-<uuid>` copy, then atomically writes v3. State directories use mode `0700`; settings, cache, snapshot, status, migration backups, and receipts use `0600`.
+Settings schema v4 stores intent as `selection: "policy" | "enabled" | "disabled"`, plus optional user availability exclusions; effective eligibility is derived separately. Legacy v0/v1/v2 Boolean controls and v3 selections migrate to explicit choices while preserving disables, Paid policy, pins (including absent model IDs), workflow bounds, and default-agent preference. Migration first saves an exact private `settings.json.v<old-version>.backup-<uuid>` copy, then atomically writes v4. Free and Paid migrations retain `verified-pricing`; v3 auto-inclusion, explicit disables, and absent-model pins survive. Role connection bindings and billing declarations are stored separately from model choices. The exact public 0.3.0 package is the primary upgrade baseline; its managed surface 2 requires an explicit guarded connection update to surface 3 and an OpenCode restart. State directories use mode `0700`; settings, cache, snapshot, status, migration backups, and receipts use `0600`.
 
 Settings and catalog reads/writes share a cross-process lock. Save uses the last settings revision for compare-and-swap: a settings conflict returns 409 without overwriting either writer. A catalog-only change can rebase untouched choices, but newly edited ineligible selections return a selection conflict. Existing blocked pins remain visible through unrelated edits. The panel preserves unsaved drafts during refresh and conflicts so the user can review and retry. Corrupt saved state fails closed; preserve the private state and migration backup for recovery rather than deleting disables or replacing the whole state with defaults. Full OpenCode config backups are a separate connector recovery mechanism.
 

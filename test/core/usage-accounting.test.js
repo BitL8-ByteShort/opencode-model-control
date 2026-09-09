@@ -58,3 +58,12 @@ test("observations keep billing provenance and reject mixed invalid numbers", ()
   assert.equal(costLabel("opencode-recorded"), "OpenCode-recorded cost");
   assert.equal(costLabel("unknown"), "Not reported");
 });
+
+test('estimates reject invalid rates, unsupported audio/tiering and unknown overlapping token semantics', () => {
+  const tokens = { input: 10, output: 2 };
+  for (const rates of [{ input: -1, output: 1 }, { input: '1', output: 1 }, { input: 1, output: Infinity }, { input: 1, output: 1, input_audio: 2 }, { input: 1, output: 1, tiers: [] }]) {
+    assert.equal(estimateApiCost({ rates, tokens }).amount, null);
+  }
+  assert.equal(estimateApiCost({ rates: { input: 1, output: 1, reasoning: 1 }, tokens: { ...tokens, reasoning: 3 } }).amount, null);
+  assert.equal(estimateApiCost({ rates: { input: 1, output: 1 }, tokens, semantics: { audioRequired: true } }).amount, null);
+});

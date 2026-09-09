@@ -112,11 +112,12 @@ function requirementsFor(role, route, task) {
   };
 }
 
-function assignmentFor({ role, route, task, catalog, settings }) {
+function assignmentFor({ role, route, task, catalog, settings, connections }) {
   const requirements = requirementsFor(role, route, task);
   const candidates = eligibleModelsForRole({
     catalog,
     settings,
+    connections,
     role,
     modalities: requirements.modalities,
     access: requirements.access,
@@ -133,15 +134,18 @@ function assignmentFor({ role, route, task, catalog, settings }) {
         ? "NO_ELIGIBLE_FREE_MODEL"
         : "NO_ELIGIBLE_MODEL"
       : "INVALID_ROLE_ASSIGNMENT";
-    const qualifier = freeOnly ? "verified-free" : "known-cost";
+    const qualifier = freeOnly ? "verified-free" : settings.paidEligibility === "configured-connections" ? "configured" : "known-cost";
     throw routerError(code, `No eligible ${qualifier} model can serve ${role}.`, {
       role,
     });
   }
 
+  const connection = connections?.find(item => item.providerId === selected.id.split("/")[0]);
   return {
     role,
     modelId: selected.id,
+    connectionId: connection?.id ?? null,
+    bindingRevision: connection?.bindingRevision ?? null,
     // These legacy fields remain in the version-one route contract, but the
     // runtime does not execute alternate-model fallbacks. The persisted
     // maxFallbacksPerAssignment setting controls only the optional
@@ -173,6 +177,7 @@ export function planRoute({
   task,
   catalog = loadModelCatalog(),
   settings = createDefaultSettings(catalog),
+  connections,
 } = {}) {
   const normalizedTask = normalizeTask(task);
   if (normalizedTask.delegationDepth > 0) {
@@ -194,6 +199,7 @@ export function planRoute({
       task: normalizedTask,
       catalog,
       settings: normalizedSettings,
+      connections,
     }),
   );
 
@@ -205,6 +211,7 @@ export function planRoute({
       freeOnly: normalizedSettings.costPolicy === "free-only",
       costPreference: normalizedSettings.costPreference,
       costPolicy: normalizedSettings.costPolicy,
+      paidEligibility: normalizedSettings.paidEligibility,
       maxDelegationDepth: normalizedSettings.maxDelegationDepth,
       maxFallbacksPerAssignment:
         normalizedSettings.maxFallbacksPerAssignment,

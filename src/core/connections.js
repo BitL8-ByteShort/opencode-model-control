@@ -174,12 +174,13 @@ export function validateConnectionSnapshot(value) {
     if (connection.id !== deriveConnectionId(value.scopeId, connection.providerId))
       invalidConnection("Connection identity is invalid.");
   }
-  const revision =
-    typeof value.revision === "string" && /^[a-f0-9]{64}$/.test(value.revision)
-      ? value.revision
-      : createHash("sha256")
-          .update(JSON.stringify(connections))
-          .digest("hex");
+  // Recompute from validated evidence; never accept a stale caller-supplied revision.
+  const revision = createHash("sha256")
+    .update(JSON.stringify(connections.map(({ inventoryObservedAt, quota, billing, ...binding }) => ({
+      ...binding,
+      billing: { kind: billing.kind, source: billing.source },
+    }))))
+    .digest("hex");
   return {
     schemaVersion: CURRENT_CONNECTION_STORE_VERSION,
     revision,
@@ -189,22 +190,18 @@ export function validateConnectionSnapshot(value) {
 }
 
 export function applyBillingDeclarations(connections, declarations = {}) {
-  return connections.map((connection) => {
+  return connections.map((observed) => {
+    // Declarations belong to saved intent; removing one must not leave a cached label.
+    const connection = observed.billing.source === "user-declared"
+      ? { ...observed, billing: { kind: "unknown", source: "unknown", observedAt: null } }
+      : observed;
     const declaration = declarations[connection.id];
-    if (!declaration) return connection;
-    if (declaration.bindingRevision !== connection.bindingRevision) {
-      return {
-        ...connection,
-        billing: { kind: "unknown", source: "unknown", observedAt: null },
-      };
-    }
+    if (!declaration || declaration.bindingRevision !== connection.bindingRevision ||
+        ["host", "provider-adapter"].includes(connection.billing.source)) return connection;
     return {
       ...connection,
-      billing: {
-        kind: declaration.kind,
-        source: "user-declared",
-        observedAt: declaration.declaredAt ?? connection.inventoryObservedAt,
-      },
+      billing: { kind: declaration.kind, source: "user-declared",
+        observedAt: declaration.declaredAt ?? connection.inventoryObservedAt },
     };
   });
 }

@@ -84,6 +84,7 @@ export function modelCostClass(model) {
 }
 
 export function isModelCostAllowed(model, settings) {
+  if (connectionAccessReasons(model, settings).length) return false;
   const priceClass = modelCostClass(model);
   if (settings?.costPolicy !== "known-cost") return priceClass === "free";
   if (settings?.paidEligibility === "configured-connections")
@@ -282,7 +283,9 @@ export function normalizeState(raw) {
       ...system,
       opencode: system.opencode ?? system.openCode,
     },
-    catalog,
+    catalog: catalog.map(model => ({...model, connection: (state.connections ?? []).find(connection => connection.providerId === (model.provider ?? model.id.split("/")[0])) ?? model.connection ?? null})),
+    connections: state.connections ?? [],
+    connectionRevision: state.connectionRevision ?? "",
     settings: normalizeSettings(state.settings, catalog),
   };
 }
@@ -404,7 +407,7 @@ export function modelEligibilityReasons(
   role,
   includeIntent = true,
 ) {
-  const reasons = [];
+  const reasons = connectionAccessReasons(model, settings);
   if (!model)
     return [
       "Model unavailable in the catalog; refresh metadata or choose another model.",
@@ -431,7 +434,12 @@ export function modelEligibilityReasons(
     reasons.push(
       "Free policy requires verified free access.",
     );
-  if (role) reasons.push(...roleCapabilityReasons(model, role));
+  if (role) {
+    reasons.push(...roleCapabilityReasons(model, role));
+    const pin = settings?.roleConnections?.[role];
+    if (settings?.roleAssignments?.[role] === model.id && model.connection && !pin) reasons.push("Connection selection required — select the current connection explicitly.");
+    if (settings?.roleAssignments?.[role] === model.id && pin && (!model.connection || pin.connectionId !== model.connection.id || pin.bindingRevision !== model.connection.bindingRevision)) reasons.push("Connection changed — review required. Select the current connection explicitly.");
+  }
   if (includeIntent && !modelIntentEnabled(settings, model.id))
     reasons.push(
       modelSelection(settings, model.id) === "disabled"
@@ -515,7 +523,8 @@ export function isRoleModelAssignable(model, settings, role) {
 export function isRoleModelEligible(model, settings, role) {
   return (
     isRoleModelAssignable(model, settings, role) &&
-    modelIntentEnabled(settings, model?.id)
+    modelIntentEnabled(settings, model?.id) &&
+    modelEligibilityReasons(model, settings, role).length === 0
   );
 }
 
@@ -526,6 +535,7 @@ export function selectRoleModel(settings, catalog, role, modelId) {
     return {
       ...settings,
       roleAssignments: { ...settings.roleAssignments, [role]: "auto" },
+      roleConnections: {...settings.roleConnections, [role]: null},
     };
   }
 
@@ -542,6 +552,7 @@ export function selectRoleModel(settings, catalog, role, modelId) {
       },
     },
     roleAssignments: { ...settings.roleAssignments, [role]: modelId },
+    roleConnections: {...settings.roleConnections, [role]: model.connection ? {connectionId: model.connection.id, bindingRevision: model.connection.bindingRevision} : null},
   };
 }
 
@@ -614,4 +625,26 @@ function stableStringify(value) {
       .join(",")}}`;
   }
   return JSON.stringify(value);
+}
+
+export function billingLabel(kind) {
+  return ({subscription: "Subscription", "metered-api": "Metered API", prepaid: "Prepaid", local: "Local", free: "Free", unknown: "Billing not reported"})[kind] ?? "Billing not reported";
+}
+export function evidenceSourceLabel(source) {
+  return ({host: "Reported by OpenCode", "provider-adapter": "Reported by provider", "user-declared": "Declared by you"})[source] ?? "Not reported";
+}
+export function effectiveBilling(connection, settings) {
+  const declared = settings?.billingDeclarations?.[connection?.id];
+  if (connection?.billing?.kind !== "unknown" && connection?.billing?.source !== "user-declared") return connection?.billing;
+  return declared?.bindingRevision === connection?.bindingRevision ? {...declared, observedAt: declared.declaredAt} : connection?.billing?.source === "user-declared" ? {kind: "unknown", source: "unknown"} : connection?.billing;
+}
+function connectionAccessReasons(model, settings) {
+  const reasons = [];
+  if (model?.api?.urlValid === false) reasons.push("Invalid endpoint; review the configured connection.");
+  if (model?.connection?.entitlement === "reported-revoked") reasons.push("Connection access revoked by the host.");
+  if (settings?.costPolicy !== "known-cost" && effectiveBilling(model?.connection, settings)?.kind === "subscription") reasons.push("Free policy requires verified free access; subscription access is paid.");
+  for (const reason of model?.blockedReasons ?? []) {
+    if (["connection-binding-changed", "connection-selection-required", "entitlement-revoked", "invalid-endpoint"].includes(reason)) reasons.push(({"connection-binding-changed": "Connection changed — review required.", "connection-selection-required": "Select a configured connection.", "entitlement-revoked": "Connection access revoked by the host.", "invalid-endpoint": "Invalid endpoint."})[reason]);
+  }
+  return reasons;
 }

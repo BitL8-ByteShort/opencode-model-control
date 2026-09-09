@@ -9,6 +9,9 @@ All notable changes to OpenCode Model Control are recorded here. The project fol
 - Add connection snapshots and settings schema 4. Existing Paid installs migrate to `verified-pricing`; selecting the new Paid control adopts `configured-connections`.
 - Free routing still requires verified free prices. Configured Paid access can use a host route when public estimates are unavailable.
 - Report tokens separately from OpenCode-recorded cost. Missing cost stays unreported. Quota may be not reported. Historical usage is not relabelled after a login change.
+- Show configured connection billing declarations, evidence sources, exact role bindings, and separate captured usage by billing kind and currency. Connection edits require current revisions; drafts survive conflicts.
+- Reload connection evidence in planner and MCP routes. Bound attribution work and retention, preserve assistant-message history and price snapshots, and flush on host disposal.
+- Verify upgrades from the exact public 0.3.0 package under both Free and legacy Paid policy, including private backups and guarded update/recovery.
 - Managed integration surface version 3; an explicit Connect/update and OpenCode restart is required for plugin behavior changes.
 
 ## 0.3.0

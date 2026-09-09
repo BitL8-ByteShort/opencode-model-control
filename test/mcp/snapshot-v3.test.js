@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { Client, InMemoryTransport } from "@modelcontextprotocol/client";
 import { ControlService } from "../../src/server/service.js";
 import { createModelControlMcpServer } from "../../src/mcp/server.js";
+import { readConnectionSnapshot, writeConnectionSnapshot } from "../../src/server/connection-store.js";
 import { publicFixture, liveModel } from "../fixtures/public-metadata.js";
 test("an already connected MCP reloads panel discoveries and policy revisions before tools", async (t) => {
   const dir = await mkdtemp(join(tmpdir(), "omc-mcp-v3-"));
@@ -144,4 +145,13 @@ test("MCP routing decisions include the exact snapshot revisions and bounded wor
   assert.equal(payload.policy.maxDelegationDepth, 1);
   assert.equal(payload.policy.maxFallbacksPerAssignment, 1);
   assert.equal(payload.policy.recursiveDelegation, false);
+  assert.equal(payload.connectionRevision, backend.getState().connectionRevision);
+  assert.equal(payload.assignments[0].connectionId, backend.getState().connections[0].id);
+  const settingsPath = join(dir, "settings.json");
+  const snapshot = await readConnectionSnapshot({ settingsPath });
+  snapshot.connections[0].entitlement = "reported-revoked";
+  await writeConnectionSnapshot({ settingsPath, snapshot });
+  const blocked = await client.callTool({ name: "route_task", arguments: { task: "Explain this function", modality: "text" } });
+  assert.equal(blocked.isError, true);
+  assert.equal(blocked.structuredContent.error.code, "NO_ELIGIBLE_FREE_MODEL");
 });

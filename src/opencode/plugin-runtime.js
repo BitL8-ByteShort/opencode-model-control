@@ -1,3 +1,6 @@
+import { capturePriceSnapshot } from "../core/usage-accounting.js";
+import { createAttributionQueue } from "../server/attribution-queue.js";
+import { setAttributionDiagnostics, persistAttributionDiagnostics } from "../server/usage-attribution-store.js";
 import {
   AUTO_ASSIGNMENT,
   eligibleModelsForRole,
@@ -313,7 +316,7 @@ function applyLiveConnections(current, host) {
   });
 }
 
-async function completeAttribution({ settingsPath, sessionID, messageID, info, route }) {
+async function completeAttribution({ settingsPath, sessionID, messageID, info, route, observedAt }) {
   const {
     attributionEventKey,
     readOrCreateAttributionSalt,
@@ -324,9 +327,10 @@ async function completeAttribution({ settingsPath, sessionID, messageID, info, r
   await upsertUsageObservation({
     settingsPath,
     pending: false,
+    pendingEventKey: attributionEventKey(salt, sessionID, route.messageID),
     observation: {
       eventKey: attributionEventKey(salt, sessionID, messageID),
-      observedAt: new Date().toISOString(),
+      observedAt,
       connectionId: route?.connectionId ?? null,
       bindingRevision: route?.bindingRevision ?? null,
       billingKind: route?.billingKind ?? "unknown",
@@ -342,41 +346,22 @@ async function completeAttribution({ settingsPath, sessionID, messageID, info, r
         typeof info?.cost === "number"
           ? { amount: info.cost, currency: null }
           : null,
-      priceSnapshotId: route?.priceSnapshotId ?? null,
+      priceSnapshot: route?.priceSnapshot ?? null,
+      priceSnapshotId: null,
     },
   });
 }
 
-async function captureAttribution({ settingsPath, input, selected, current }) {
-  const {
-    attributionEventKey,
-    readOrCreateAttributionSalt,
-    upsertUsageObservation,
-  } = await import("../server/usage-attribution-store.js");
+async function captureAttribution({ settingsPath, sessionID, route }) {
+  const { attributionEventKey, readOrCreateAttributionSalt, upsertUsageObservation } = await import("../server/usage-attribution-store.js");
   const salt = await readOrCreateAttributionSalt(settingsPath);
-  const role = OWNED_ROLES[input.agent];
-  const binding = current.settings.roleConnections?.[role] ?? null;
-  await upsertUsageObservation({
-    settingsPath,
-    pending: true,
-    observation: {
-      eventKey: attributionEventKey(salt, input.sessionID, input.message.id),
-      observedAt: new Date().toISOString(),
-      connectionId: binding?.connectionId ?? null,
-      bindingRevision: binding?.bindingRevision ?? null,
-      billingKind: "unknown",
-      billingSource: "unknown",
-      tokens: {
-        input: null,
-        output: null,
-        reasoning: null,
-        cacheRead: null,
-        cacheWrite: null,
-      },
-      recordedCost: null,
-      priceSnapshotId: selected.pricing?.digest ?? null,
-    },
-  });
+  await upsertUsageObservation({ settingsPath, pending: true, observation: {
+    eventKey: attributionEventKey(salt, sessionID, route.messageID),
+    observedAt: route.observedAt,
+    connectionId: route.connectionId ?? null, bindingRevision: route.bindingRevision ?? null,
+    billingKind: route.billingKind ?? "unknown", billingSource: route.billingSource ?? "unknown",
+    tokens: {}, recordedCost: null, priceSnapshot: route.priceSnapshot ?? null, priceSnapshotId: null,
+  } });
 }
 
 export function createMediaRoutingHooks({
@@ -386,12 +371,11 @@ export function createMediaRoutingHooks({
   recordUsage = false,
   settingsPath = resolveSettingsPath(),
 } = {}) {
-  const attributionWork = [];
-  const queueAttribution = (work) => {
-    const tracked = Promise.resolve(work).catch(() => {});
-    attributionWork.push(tracked);
-    return tracked;
-  };
+  const attributionQueue = createAttributionQueue({
+    onState: state => setAttributionDiagnostics(settingsPath, state),
+    persist: state => persistAttributionDiagnostics(settingsPath, state),
+  });
+  const queueAttribution = work => attributionQueue.enqueue(work);
   const routes = new Map();
   const readOnlySessions = new Set();
   const workflows = new Map();
@@ -519,6 +503,10 @@ export function createMediaRoutingHooks({
   }
   return {
     async event({ event }) {
+      if (event?.type === "server.instance.disposed") {
+        if (recordUsage) await attributionQueue.flush({ close: true });
+        return;
+      }
       if (event?.type === "message.updated") {
         const info = event.properties?.info,
           route = routes.get(info?.sessionID);
@@ -541,17 +529,17 @@ export function createMediaRoutingHooks({
             completeChild(operation, info.sessionID);
             background.delete(info.sessionID);
           }
-          if (recordUsage) {
-            queueAttribution(
-              completeAttribution({
-                settingsPath,
-                sessionID: info.sessionID,
-                messageID: route.messageID,
-                info,
-                route,
-              }),
-            );
-          }
+        }
+        // Every completed assistant step can be billable, including tool calls.
+        // Keep repair authorization above independent of asynchronous accounting.
+        if (recordUsage && route?.attribution && info?.role === "assistant" &&
+            info.agent === route.agent && info.parentID === route.messageID &&
+            info.time?.completed && typeof info.id === "string") {
+          const snapshot = { ...route.attribution };
+          const completedInfo = structuredClone(info);
+          const observedAt = new Date().toISOString();
+          queueAttribution(() => completeAttribution({ settingsPath,
+            sessionID: info.sessionID, messageID: info.id, info: completedInfo, route: snapshot, observedAt }));
         }
         return;
       }
@@ -639,7 +627,7 @@ export function createMediaRoutingHooks({
             null,
           billingKind: selected.connection?.billing?.kind ?? "unknown",
           billingSource: selected.connection?.billing?.source ?? "unknown",
-          priceSnapshotId: selected.pricing?.digest ?? null,
+          priceSnapshotId: null,
           requirements,
           agent: output.message.agent,
           messageID: output.message.id,
@@ -806,14 +794,18 @@ export function createMediaRoutingHooks({
       )
         fail("OMC_DISPATCH_PRICING_CONFLICT");
       if (recordUsage) {
-        queueAttribution(
-          captureAttribution({
-            settingsPath,
-            input,
-            selected,
-            current,
-          }),
-        );
+        // Capture binding before dispatch; completion cannot inherit a later login.
+        route.attribution ??= Object.freeze({
+          messageID: route.messageID,
+          observedAt: new Date().toISOString(),
+          priceSnapshot: capturePriceSnapshot(selected.pricing),
+          connectionId: selected.connection?.id ?? route.connectionId ?? null,
+          bindingRevision: selected.connection?.bindingRevision ?? route.bindingRevision ?? null,
+          billingKind: selected.connection?.billing?.kind ?? "unknown",
+          billingSource: selected.connection?.billing?.source ?? "unknown",
+        });
+        const snapshot = { ...route.attribution };
+        queueAttribution(() => captureAttribution({ settingsPath, sessionID: input.sessionID, route: snapshot }));
       }
     },
     async "permission.ask"(input, output) {
@@ -924,8 +916,13 @@ export function createMediaRoutingHooks({
       )
         operation.slash.completed = true;
     },
-    async flushAttribution() {
-      await Promise.all(attributionWork.splice(0));
+    // OpenCode 1.18.28 awaits plugin dispose() finalizers. Event listeners are
+    // fire-and-forget, so shutdown durability uses this lifecycle hook.
+    async dispose() {
+      if (recordUsage) return attributionQueue.flush({ close: true });
+    },
+    async flushAttribution(options) {
+      return attributionQueue.flush(options);
     },
   };
 }

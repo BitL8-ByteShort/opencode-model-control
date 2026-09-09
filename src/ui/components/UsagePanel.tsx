@@ -1,4 +1,6 @@
 import type { OpenCodeUsage, UsageWindow } from "../types";
+import { attributedUsageGroups, attributionCoverageWarning } from "../usage-view.js";
+import { billingLabel, evidenceSourceLabel } from "../model-control.js";
 import { Button, Icon, Panel } from "./Primitives";
 
 const windows: Array<{ label: string; value: UsageWindow }> = [
@@ -124,6 +126,19 @@ export function UsagePanel({
             </div>
           </div>
 
+          <section className="attributed-usage" aria-label="Captured connection usage">
+            <h3>Captured connection usage</h3>
+            <p>Partial coverage: these captured records are a subset of historical accounting above. Groups retain the billing declaration and binding at capture, separately for each currency. They are not additional charges.</p>
+            <p>Capture began: {usage.attributed?.coverage.firstObservedAt ?? "Not reported"}. Dropped records: {usage.attributed?.coverage.droppedCount ?? "Not reported"}. {usage.attributed?.coverage.truncated ? "Retention truncated this window." : ""} Pending: {usage.attributed?.coverage.pendingCount ?? "Not reported"}; Failed writes: {usage.attributed?.coverage.failedWriteCount ?? "Not reported"}.</p>
+            {attributionCoverageWarning(usage.attributed?.coverage) ? <p role="status" className="inline-alert inline-alert--warning">{attributionCoverageWarning(usage.attributed?.coverage)}</p> : null}
+            {attributedUsageGroups(usage.attributed?.observations).map((group, index) => <article key={group.key}>
+              <h4>{group.connectionLabel} · capture group {index + 1}</h4>
+              <p>{billingLabel(group.billingKind)} · {evidenceSourceLabel(group.billingSource)} · {group.messages} captured messages</p>
+              <p>Recorded cost: {group.cost == null ? "Not reported" : `${group.cost.toLocaleString()} ${group.currency ?? "(currency not reported)"}`}. API estimate: unavailable. Provider charge: not reported. Quota: not reported.</p>
+              <p>Input: {formatCount(group.tokens.input)} · Output: {formatCount(group.tokens.output)} · Reasoning: {formatCount(group.tokens.reasoning)} · Cache read: {formatCount(group.tokens.cacheRead)} · Cache write: {formatCount(group.tokens.cacheWrite)}</p>
+            </article>)}
+            {!usage.attributed?.observations.length ? <p>No connection-attributed records in this window. Historical connection and billing: not reported.</p> : null}
+          </section>
           <div className="usage-models">
             <div className="usage-models__heading">
               <div>

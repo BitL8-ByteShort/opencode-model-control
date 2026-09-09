@@ -110,8 +110,9 @@ test("blocked saved pins survive refresh and unrelated saves; newly edited block
         ...state.settings.roleAssignments,
         orchestrator: "new/model",
       },
+      roleConnections: { ...state.settings.roleConnections, orchestrator: { connectionId: state.connections[0].id, bindingRevision: state.connections[0].bindingRevision } },
     },
-    { expectedSettingsRevision: state.settingsRevision },
+    { expectedSettingsRevision: state.settingsRevision, expectedConnectionRevision: state.connectionRevision },
   );
   service.metadataFetch = async () =>
     new Response(
@@ -133,8 +134,9 @@ test("blocked saved pins survive refresh and unrelated saves; newly edited block
           ...state.settings.roleAssignments,
           reviewer: "new/model",
         },
+        roleConnections: { ...state.settings.roleConnections, reviewer: { connectionId: state.connections[0].id, bindingRevision: state.connections[0].bindingRevision } },
       },
-      { expectedSettingsRevision: state.settingsRevision },
+      { expectedSettingsRevision: state.settingsRevision, expectedConnectionRevision: state.connectionRevision },
     ),
     (e) => e.statusCode === 409 && e.code === "SELECTION_CONFLICT",
   );

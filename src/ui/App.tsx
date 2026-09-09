@@ -25,6 +25,7 @@ import { AppShell } from "./components/AppShell";
 import { BenchmarkPanel } from "./components/BenchmarkPanel";
 import { ConfigPanel } from "./components/ConfigPanel";
 import { ModelTable } from "./components/ModelTable";
+import { ConnectionsPanel } from "./components/ConnectionsPanel";
 import { RoleAssignments } from "./components/RoleAssignments";
 import { RouteTester } from "./components/RouteTester";
 import { RoutingOverview } from "./components/RoutingOverview";
@@ -216,7 +217,7 @@ export default function App() {
     setSaving(true);
     setActionError(""); setNotice("");
     try {
-      const result = await updateSettings(settingsForApi(current.draft) as RouterSettings, current.baselineRevision, current.state.catalogRevision);
+      const result = await updateSettings(settingsForApi(current.draft) as RouterSettings, current.baselineRevision, current.state.catalogRevision, current.baselineConnectionRevision);
       publishEditor(finishSave(editorRef.current, result, requestId));
       setConflict(false);
       setNotice(current.baseline.makeRouterDefault !== current.draft.makeRouterDefault
@@ -363,6 +364,7 @@ export default function App() {
                 qualification={runtimeQualification}
                 settings={draftSettings}
               />
+              <ConnectionsPanel connections={state.connections} settings={draftSettings} onChange={setDraftSettings} />
               <RoleAssignments catalog={state.catalog} onChange={setDraftSettings} settings={draftSettings} />
               <RouteTester catalog={state.catalog} />
               <ConfigPanel

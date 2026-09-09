@@ -77,7 +77,7 @@ export interface RouterSettings {
   autoIncludeNewModels: boolean;
   roleAssignments: RoleAssignments;
   roleConnections?: Record<string, RoleConnection | null>;
-  billingDeclarations?: Record<string, unknown>;
+  billingDeclarations?: Record<string, BillingDeclaration>;
   modelControls: Record<string, ModelControl>;
   maxDelegationDepth: number;
   maxFallbacksPerAssignment: number;
@@ -119,6 +119,8 @@ export interface ModelControlState {
   settings: RouterSettings;
   settingsRevision: string;
   catalogRevision: string;
+  connectionRevision: string;
+  connections: Connection[];
   blockedRoles?: Record<string, string[]>;
   rebased?: boolean;
 }
@@ -289,11 +291,15 @@ export interface OpenCodeUsage {
   };
   quota?: { status: string };
   attributed?: {
-    observations: unknown[];
+    observations: UsageObservation[];
     coverage: {
       firstObservedAt: string | null;
       droppedCount: number;
       truncated: boolean;
+      failedWriteCount?: number;
+      partial?: boolean;
+      lastFailureCode?: "ATTRIBUTION_WRITE_FAILED" | "ATTRIBUTION_READ_FAILED" | null;
+      pendingCount?: number;
     };
   };
   caveats: string[];
@@ -320,6 +326,26 @@ export interface EditorState {
   baseline: RouterSettings;
   draft: RouterSettings;
   baselineRevision: string;
+  baselineConnectionRevision: string;
   requestId: number;
   saving: {requestId: number; submitted: RouterSettings} | null;
+}
+
+export type BillingKind = "subscription" | "metered-api" | "prepaid" | "local" | "free" | "unknown";
+export interface BillingDeclaration { kind: BillingKind; bindingRevision: string; source: "user-declared"; declaredAt: string }
+export interface Connection {
+  id: string; providerId: string; bindingRevision: string;
+  authKind: "oauth" | "api-key" | "none" | "unknown";
+  billing: {kind: BillingKind; source: string; observedAt: string | null};
+  transportVisibility: string; inventoryObservedAt: string;
+  entitlement: string;
+  quota: {source: string; unit: string; limit: number | null; used: number | null; remaining: number | null; resetsAt: string | null; observedAt: string; expiresAt: string} | null;
+}
+export interface UsageObservation {
+  eventKey: string; observedAt: string; connectionId: string | null; bindingRevision: string | null;
+  billingKind: BillingKind; billingSource: string;
+  tokens: Omit<UsageTokens, "total">;
+  recordedCost: {amount: number | null; currency: string | null} | null;
+  priceSnapshotId: string | null;
+  priceSnapshot?: {rates: Record<string, number>; source: string; fetchedAt: string; expiresAt: string; semantics: null} | null;
 }

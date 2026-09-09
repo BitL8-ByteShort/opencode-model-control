@@ -20,7 +20,7 @@ import { join } from "node:path";
 
 const A = "opencode/ling-3.0-flash-fin-free",
   B = "opencode/nemotron-3.5-lightning-free";
-function fixture({ connections = [], connectionScopeId } = {}) {
+function fixture({ connections = [], connectionScopeId, recordUsage = false, settingsPath } = {}) {
   const catalog = loadModelCatalog();
   for (const m of catalog.models)
     m.api = {
@@ -63,6 +63,7 @@ function fixture({ connections = [], connectionScopeId } = {}) {
     },
   };
   const hooks = createMediaRoutingHooks({
+    recordUsage, settingsPath,
     loadPolicy: async () => ({
       catalog,
       settings,
@@ -550,6 +551,7 @@ test("usage attribution completes after a successful owned assistant message", a
       type: "message.updated",
       properties: {
         info: {
+          id: "assistant-1",
           sessionID: "child",
           role: "assistant",
           agent: "omc-code-worker",
@@ -562,9 +564,15 @@ test("usage attribution completes after a successful owned assistant message", a
       },
     },
   });
+  const step = { id: "assistant-tools", sessionID: "child", role: "assistant", agent: "omc-code-worker", parentID: output.message.id, time: { completed: Date.now() }, finish: "tool-calls", tokens: { input: 7, output: 2 }, cost: 0.1 };
+  await hooks.event({ event: { type: "message.updated", properties: { info: step } } });
+  await hooks.event({ event: { type: "message.updated", properties: { info: { ...step, tokens: { input: 999 } } } } });
+  assert.equal((await hooks.dispose()).complete, true);
   await hooks.flushAttribution();
   const attributed = await readUsageAttribution({ settingsPath });
-  assert.equal(attributed.observations.length, 1);
+  assert.equal(attributed.observations.length, 2);
+  assert.equal(attributed.observations[1].tokens.input, 7);
+  assert.equal(attributed.coverage.pendingCount, 0);
   assert.equal(attributed.observations[0].tokens.input, 11);
   assert.equal(attributed.observations[0].recordedCost.amount, 0);
   await rm(directory, { recursive: true, force: true });
@@ -747,6 +755,44 @@ test("terminal background repair completion releases retention before a later di
   const next = await f.turn();
   assert.equal(next.message.model.modelID, "nemotron-3.5-lightning-free");
   await f.dispatch(next);
+});
+
+test("terminal repair completion releases retention while attribution state lock is paused", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "omc-repair-accounting-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const settingsPath = join(directory, "settings.json");
+  const f = fixture({ recordUsage: true, settingsPath });
+  await reviewedWorker(f);
+  await beginTask(f, "repair", "omc-code-worker", "child");
+  const repair = await f.turn();
+  await finishTask(f, "repair", "child", "parent", true);
+  f.settings.roleAssignments["code-worker"] = B;
+  await f.dispatch(repair);
+  await f.hooks.flushAttribution();
+  const { acquireFileLock } = await import("../../src/server/state-lock.js");
+  const release = await acquireFileLock(`${settingsPath}.lock`);
+  t.after(release);
+  await Promise.race([f.hooks.event({
+    event: {
+      type: "message.updated",
+      properties: {
+        info: {
+          id: "repair-assistant",
+          sessionID: "child",
+          parentID: repair.message.id,
+          role: "assistant",
+          agent: "omc-code-worker",
+          finish: "stop",
+          time: { completed: Date.now() },
+        },
+      },
+    },
+  }), new Promise((_, reject) => { const timer = setTimeout(() => reject(new Error("Accounting blocked completion")), 500); timer.unref(); })]);
+  const next = await f.turn();
+  assert.equal(next.message.model.modelID, "nemotron-3.5-lightning-free");
+  await f.dispatch(next);
+  await release();
+  assert.equal((await f.hooks.dispose()).complete, true);
 });
 
 test("review of W1 never turns an independent W2 resume into repair", async () => {

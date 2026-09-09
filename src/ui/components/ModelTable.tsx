@@ -8,6 +8,9 @@ import type {
 } from "../types";
 import {
   catalogSummary,
+  billingLabel,
+  effectiveBilling,
+  evidenceSourceLabel,
   evidenceMeta,
   isModelAvailable,
   modelCostClass,
@@ -254,8 +257,9 @@ export function ModelTable({
                   <td data-label="Availability">
                     <span className="inline-status">
                       <StatusDot tone={available ? "positive" : "negative"} />
-                      {available ? "Available" : "Unavailable"}
+                      {billingLabel(effectiveBilling(model.connection, settings)?.kind)} · {available ? "Available" : "Unavailable"}
                     </span>
+                    <small>{evidenceSourceLabel(effectiveBilling(model.connection, settings)?.source)}</small>
                   </td>
                   <td data-label="Evidence">
                     <span
@@ -296,8 +300,9 @@ export function ModelTable({
                   <td data-label="Connection">
                     <span className="inline-status">
                       {model.provider ?? model.id.split("/")[0]} ·{" "}
-                      {available ? "Available" : "Unavailable"}
+                      {billingLabel(effectiveBilling(model.connection, settings)?.kind)} · {available ? "Available" : "Unavailable"}
                     </span>
+                    <small>{evidenceSourceLabel(effectiveBilling(model.connection, settings)?.source)}</small>
                     <p className="eligibility-reasons">
                       {model.api &&
                       typeof model.api === "object" &&

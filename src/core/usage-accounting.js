@@ -32,6 +32,18 @@ export function estimateApiCost({ rates, tokens, semantics = {} } = {}) {
   if (!isPlainObject(rates) || !isPlainObject(tokens)) {
     return { amount: null, status: "unavailable", currency: null };
   }
+  const unavailable = { amount: null, status: "unavailable", currency: null };
+  if (!isPlainObject(semantics)) return unavailable;
+  // Unsupported rate dimensions (tiered, audio, long-context, etc.) cannot
+  // silently fall back to ordinary text prices.
+  const supported = new Set(["input", "output", "reasoning", "cache_read", "cache_write"]);
+  if (Object.entries(rates).some(([key, value]) => !supported.has(key) || typeof value !== "number" || !Number.isFinite(value) || value < 0)) return unavailable;
+  if (semantics.audioRequired || Object.keys(semantics).some(key => !["reasoningIncludedInOutput", "cacheIncludedInInput", "audioRequired"].includes(key))) return unavailable;
+  for (const key of ["reasoningIncludedInOutput", "cacheIncludedInInput"]) {
+    if (semantics[key] != null && typeof semantics[key] !== "boolean") return unavailable;
+  }
+  if (tokens.reasoning > 0 && typeof semantics.reasoningIncludedInOutput !== "boolean") return unavailable;
+  if ((tokens.cacheRead > 0 || tokens.cacheWrite > 0) && typeof semantics.cacheIncludedInInput !== "boolean") return unavailable;
   const input = nullableFinite(tokens.input);
   const output = nullableFinite(tokens.output);
   if (input === null || output === null || rates.input == null || rates.output == null) {
@@ -62,6 +74,21 @@ export function estimateApiCost({ rates, tokens, semantics = {} } = {}) {
     status: "estimated-api-cost",
     currency: "USD",
   };
+}
+
+// Retain only public rate evidence. Missing semantics intentionally keeps this
+// historical snapshot unsuitable for a complete API estimate.
+export function capturePriceSnapshot(pricing) {
+  if (!isPlainObject(pricing) || !isPlainObject(pricing.rates) || !Number.isFinite(Date.parse(pricing.fetchedAt)) || !Number.isFinite(Date.parse(pricing.expiresAt))) return null;
+  const keys = ["input", "output", "reasoning", "cache_read", "cache_write"];
+  if (Object.entries(pricing.rates).some(([key, value]) => !keys.includes(key) || typeof value !== "number" || !Number.isFinite(value) || value < 0)) return null;
+  if (pricing.rates.input == null || pricing.rates.output == null || typeof pricing.source !== "string" || pricing.source.length > 2048) return null;
+  let source;
+  try {
+    source = new URL(pricing.source);
+    if (source.protocol !== "https:" || source.username || source.password || source.search || source.hash) return null;
+  } catch { return null; }
+  return { rates: Object.fromEntries(keys.filter(key => pricing.rates[key] != null).map(key => [key, pricing.rates[key]])), source: source.href, fetchedAt: new Date(pricing.fetchedAt).toISOString(), expiresAt: new Date(pricing.expiresAt).toISOString(), semantics: null };
 }
 
 export function validateUsageObservation(value) {
@@ -99,7 +126,7 @@ export function validateUsageObservation(value) {
             value.recordedCost.currency === null ||
             value.recordedCost.currency === undefined
               ? null
-              : typeof value.recordedCost.currency === "string"
+              : typeof value.recordedCost.currency === "string" && /^[A-Z]{3}$/.test(value.recordedCost.currency)
                 ? value.recordedCost.currency
                 : invalidUsage("Usage observation currency is invalid."),
         };
@@ -114,12 +141,9 @@ export function validateUsageObservation(value) {
       TOKEN_KEYS.map((key) => [key, nullableFinite(tokens[key] ?? null)]),
     ),
     recordedCost: recorded,
-    priceSnapshotId:
-      value.priceSnapshotId === null || value.priceSnapshotId === undefined
-        ? null
-        : typeof value.priceSnapshotId === "string"
-          ? value.priceSnapshotId
-          : invalidUsage("Usage observation price snapshot is invalid."),
+    priceSnapshot: capturePriceSnapshot(value.priceSnapshot),
+    priceSnapshotId: capturePriceSnapshot(value.priceSnapshot) && typeof value.priceSnapshotId === "string" && /^[a-f0-9]{64}$/.test(value.priceSnapshotId) ? value.priceSnapshotId : null,
+
   };
 }
 

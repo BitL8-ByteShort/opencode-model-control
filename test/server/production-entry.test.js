@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, readFile, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -86,6 +86,19 @@ test("normal CLI ignores NODE_ENV=development and never imports Vite", async (t)
     "utf8",
   );
 
+  // This test exercises CLI startup, not host discovery. Keep discovery inside
+  // the fixture so user plugins, credentials, and network cannot affect it.
+  const fixtureBin = join(temporaryDirectory, "bin");
+  const invocationPath = join(temporaryDirectory, "host-invocations.jsonl");
+  await mkdir(fixtureBin);
+  await writeFile(join(fixtureBin, "opencode"), `#!${process.execPath}
+import { appendFileSync } from "node:fs";
+const args = process.argv.slice(2);
+appendFileSync(${JSON.stringify(invocationPath)}, JSON.stringify(args) + "\\n");
+if (args[0] === "--version") process.stdout.write("1.18.28\\n");
+else if (args[0] !== "models") process.exit(2);
+`, { mode: 0o700 });
+
   const port = await reserveLoopbackPort();
   let stdout = "";
   let stderr = "";
@@ -99,7 +112,12 @@ test("normal CLI ignores NODE_ENV=development and never imports Vite", async (t)
     ],
     {
       env: {
-        ...process.env,
+        PATH: `${fixtureBin}:${process.env.PATH}`,
+        HOME: temporaryDirectory,
+        XDG_CONFIG_HOME: join(temporaryDirectory, "xdg-config"),
+        XDG_CACHE_HOME: join(temporaryDirectory, "xdg-cache"),
+        XDG_DATA_HOME: join(temporaryDirectory, "xdg-data"),
+        OPENCODE_AUTH_CONTENT: "{}",
         NODE_ENV: "development",
         OMC_CONFIG_DIR: join(temporaryDirectory, "config"),
         OMC_PORT: String(port),
@@ -127,4 +145,7 @@ test("normal CLI ignores NODE_ENV=development and never imports Vite", async (t)
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-security-policy") ?? "", /default-src/);
   assert.doesNotMatch(stdout + stderr, /VITE_IMPORT_FORBIDDEN/);
+  const invocations = (await readFile(invocationPath, "utf8")).trim().split("\n").map(line => JSON.parse(line));
+  assert.ok(invocations.some(args => args[0] === "models"));
+  assert.ok(invocations.every(args => ["--version", "models"].includes(args[0])));
 });

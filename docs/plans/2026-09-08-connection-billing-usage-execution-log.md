@@ -103,3 +103,18 @@ Acceptance on this Linux/Node 24 host:
 - `production-entry` still times out on Node 24 `--experimental-loader` (pre-existing environment).
 - No public publish. PR review is separate from publication.
 
+
+## Astra completion of PR #17 (2026-09-08 America/New_York)
+
+Baseline: `26c4dd912aafa33a932a40fc4d0d9991d7e7b4fa`. Completed the four remaining implementation areas: configured-connection billing/declaration and historical usage UI; connection-aware planner/MCP with revision-safe edits; bounded immutable attribution and disposal; exact public 0.3.0 Free/Paid migration acceptance. Route-plan contract is now schema 2. Catalog remains schema 2 because connection evidence is a separate versioned store.
+
+- New explicit pins require both a current connection revision and an exact connection binding. Unchanged legacy pins and unrelated edits retain their existing intent. Billing declarations cannot override host/provider-adapter evidence.
+- Captured assistant usage retains dispatch billing and public rate evidence; missing token semantics leaves estimates unreported. Captured usage is partial and is never added to aggregate host costs.
+- Attribution has bounded queued work, private salted identities, immutable completion upserts, validated stored rows, cumulative failures/drops and an awaited, bounded host disposal flush.
+- Browser interaction suite: 14 scenarios passed before the final coverage-field alignment; exact candidate acceptance reruns all 14 against installed production assets.
+- Node 24.14.0: type check/build passed; all 343 tests passed with no skips using `node --test --test-concurrency=4` and exact OpenCode 1.18.22 on PATH. Initial unconstrained run hit two host startup timeouts. Both passed independently; production-entry was then corrected to use an isolated discovery fixture instead of inheriting the maintainer's OpenCode state. Real-host behavior remains covered by the separate host suite.
+- Independent Astra high review found a new-pin binding bypass and a coverage counter name mismatch; both were corrected with regression coverage.
+- Live public metadata smoke passed with zero inference requests. Retrieval is separate from model dispatch and entitlement evidence.
+- Local candidate SHA-256: `668d3b8ab17c35abdaf3e3069e8dba0b177c381257b01408262a0049707c565f`. Exact packaged acceptance is running separately; this is candidate evidence, not final-release bytes or a publication claim.
+
+The preexisting untracked Grok plan is preserved. Merge, final artifact creation, publication, and public verification remain separate release gates.

@@ -219,7 +219,9 @@ test("a complete catalog snapshot preserves enabled plugin models across a parti
   settings.costPolicy = "known-cost";
   settings.modelControls[pluginModel.id] = {selection:"enabled"};
   settings.roleAssignments["code-worker"] = pluginModel.id;
-  await first.updateSettings(settings, {expectedSettingsRevision:first.getState().settingsRevision});
+  const selectedConnection = first.getState().connections.find(connection => connection.providerId === pluginModel.id.split("/")[0]);
+  settings.roleConnections["code-worker"] = { connectionId: selectedConnection.id, bindingRevision: selectedConnection.bindingRevision };
+  await first.updateSettings(settings, {expectedSettingsRevision:first.getState().settingsRevision, expectedConnectionRevision:first.getState().connectionRevision});
 
   assert.equal((await stat(snapshotPath)).mode & 0o777, 0o600);
   const second = await new ControlService({ metadataFetch:publicMetadataFetch, settingsPath, discovery: incompleteDiscovery }).initialize();

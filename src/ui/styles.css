@@ -2710,3 +2710,11 @@ textarea::placeholder {
   .models-panel td > .eligibility-reasons { grid-column: 1 / -1; }
   .models-panel td > .selection-control { grid-column: 2; }
 }
+
+.connection-card { border-top: 1px solid var(--border, #ddd); padding: 1rem 0; overflow-wrap: anywhere; }
+.connection-card dl { display: grid; gap: .5rem; }
+.connection-card dl div { display: grid; grid-template-columns: minmax(90px, 1fr) minmax(0, 2fr); gap: .75rem; }
+.connection-card dd { margin: 0; }
+.connections-panel select { width: 100%; min-width: 0; }
+.attributed-usage { margin-top: 1.5rem; overflow-wrap: anywhere; }
+.attributed-usage article { padding: 1rem 0; border-top: 1px solid var(--border, #ddd); }

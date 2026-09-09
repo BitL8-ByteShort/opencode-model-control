@@ -167,6 +167,7 @@ export async function handleApi(
     const body = await readJson(request, { maxBytes: MAX_SETTINGS_BYTES });
     json(response, 200, await service.updateSettings(body?.settings ?? body, {
       expectedSettingsRevision: body?.expectedSettingsRevision,
+      expectedConnectionRevision: body?.expectedConnectionRevision,
       catalogRevision: body?.catalogRevision,
     }));
     return true;
