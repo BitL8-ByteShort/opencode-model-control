@@ -77,7 +77,7 @@ These are not verified fixes. The correct Task 2 contract treats raw `''`/absent
 
 **Files:** `src/opencode/plugin-runtime.js`, live-routing tests
 
-**Result:** Provider-level opaque `fetch` accepted under Paid when binding matches. Free still rejects it. Model/task fetch and endpoint overrides still conflict. Hook tests pass; full isolated host auth-loader path not yet run (`npm run test:host`).
+**Result:** Provider-level opaque `fetch` accepted under Paid when binding matches. Free still rejects it. Model/task fetch and endpoint overrides still conflict. Repair retains connection ID/revision and stops on a subscription-to-API binding change.
 
 **Commit:** `87be12d`
 
@@ -93,7 +93,13 @@ These are not verified fixes. The correct Task 2 contract treats raw `''`/absent
 
 ## Task 8
 
-Package 0.4.0, managed surface 3, changelog, CONTRIBUTING, integration, SECURITY, README. No public publish. `npm run test:host` / `test:browser` / packaged acceptance not run in this session.
+Package 0.4.0, managed surface 3, changelog, CONTRIBUTING, integration, SECURITY, README.
 
-Pre-existing env: `production-entry` test times out on this Node 24 `--experimental-loader` warning. Source tests otherwise 317/318.
+Acceptance on this Linux/Node 24 host:
+- `OMC_HOST_BINARY=opencode npm run test:host`: passed, OpenCode 1.18.28, 19 scenarios, 56 loopback requests, 0 real-provider inference.
+- `npm run test:browser`: 12 passed.
+- `npm run test:metadata`: passed, 0 inference requests.
+- OpenCode 1.18.22 binary not present; macOS and packaged four-way Node/OS gates not run.
+- `production-entry` still times out on Node 24 `--experimental-loader` (pre-existing environment).
+- No public publish. PR review is separate from publication.
 
