@@ -478,9 +478,17 @@ export default async () => ({ "chat.message": async (_input, output) => {
             ...state.settings.roleAssignments,
             "code-worker": "omctest/c",
           },
+          roleConnections: {
+            ...state.settings.roleConnections,
+            "code-worker": {
+              connectionId: state.connections.find(connection => connection.providerId === "omctest").id,
+              bindingRevision: state.connections.find(connection => connection.providerId === "omctest").bindingRevision,
+            },
+          },
         },
         {
           expectedSettingsRevision: state.settingsRevision,
+          expectedConnectionRevision: state.connectionRevision,
           catalogRevision: state.catalogRevision,
         },
       );
