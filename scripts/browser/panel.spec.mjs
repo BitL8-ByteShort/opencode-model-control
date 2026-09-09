@@ -78,7 +78,7 @@ const model = (id, pricingClass = "free") => ({
 });
 function initial() {
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     settingsRevision: "s1",
     catalogRevision: "c1",
     blockedRoles: {},
@@ -88,9 +88,10 @@ function initial() {
       { ...model("fixture/Blocked", "unknown"), available: false },
     ],
     settings: {
-      schemaVersion: 3,
+      schemaVersion: 4,
       costPolicy: "free-only",
       costPreference: "free-first",
+      paidEligibility: "verified-pricing",
       autoIncludeNewModels: true,
       makeRouterDefault: true,
       maxDelegationDepth: 1,
@@ -208,12 +209,12 @@ test.beforeAll(async () => {
           },
           409,
         );
-      if (input.settings?.schemaVersion !== 3)
+      if (input.settings?.schemaVersion !== 4)
         return send(
           {
             error: {
               code: "INVALID_SETTINGS",
-              message: "Canonical settings v3 required.",
+              message: "Canonical settings v4 required.",
             },
           },
           400,

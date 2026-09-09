@@ -13,7 +13,7 @@ import {
 
 const A = "opencode/ling-3.0-flash-fin-free",
   B = "opencode/nemotron-3.5-lightning-free";
-function fixture() {
+function fixture({ connections = [] } = {}) {
   const catalog = loadModelCatalog();
   for (const m of catalog.models)
     m.api = {
@@ -56,7 +56,7 @@ function fixture() {
     },
   };
   const hooks = createMediaRoutingHooks({
-    loadPolicy: async () => ({ catalog, settings }),
+    loadPolicy: async () => ({ catalog, settings, connections }),
     client,
     directory: "/isolated",
   });
@@ -229,6 +229,53 @@ test("ordinary resumed worker adopts live policy while reviewed repair retains e
   await assert.rejects(
     f.dispatch(repair),
     (e) => e.code === "OMC_ROUTE_UNAVAILABLE",
+  );
+});
+test("repair stops when the original connection binding switches billing", async () => {
+  const connection = {
+    id: "a".repeat(32),
+    providerId: "opencode",
+    bindingRevision: "b".repeat(32),
+    authKind: "unknown",
+    billing: { kind: "subscription", source: "user-declared", observedAt: null },
+    transportVisibility: "host-managed",
+    inventoryObservedAt: new Date().toISOString(),
+    entitlement: "not-reported",
+    quota: null,
+  };
+  const f = fixture({ connections: [connection] });
+  await f.turn("omc-router", "parent");
+  await f.hooks["tool.execute.before"](
+    { tool: "task", sessionID: "parent", callID: "work" },
+    { args: { subagent_type: "omc-code-worker" } },
+  );
+  const worker = await f.turn();
+  await f.dispatch(worker);
+  await f.hooks["tool.execute.after"](
+    { tool: "task", sessionID: "parent", callID: "work" },
+    { metadata: { sessionId: "child" } },
+  );
+  await f.hooks["tool.execute.before"](
+    { tool: "task", sessionID: "parent", callID: "review" },
+    { args: { subagent_type: "omc-reviewer" } },
+  );
+  await f.turn("omc-reviewer", "review");
+  await f.hooks["tool.execute.after"](
+    { tool: "task", sessionID: "parent", callID: "review" },
+    { metadata: { sessionId: "review" } },
+  );
+  connection.bindingRevision = "c".repeat(32);
+  connection.billing = {
+    kind: "metered-api",
+    source: "unknown",
+    observedAt: null,
+  };
+  await assert.rejects(
+    f.hooks["tool.execute.before"](
+      { tool: "task", sessionID: "parent", callID: "repair" },
+      { args: { subagent_type: "omc-code-worker", task_id: "child" } },
+    ),
+    { code: "OMC_DISPATCH_IDENTITY_CONFLICT" },
   );
 });
 test("unrelated agents never load saved policy or host inventory", async () => {

@@ -379,7 +379,7 @@ try {
       "utf8",
     ),
   );
-  assert.equal(receipt.managedSurfaceVersion, 2);
+  assert.equal(receipt.managedSurfaceVersion, 3);
   evidence.checks.push(
     "actual-0.2.1-managed-surface-upgrade",
     "connection-update-status",
@@ -528,11 +528,11 @@ try {
     JSON.parse(
       await readFile(join(env.OMC_CONFIG_DIR, "settings.json"), "utf8"),
     ).schemaVersion,
-    3,
+    4,
   );
   evidence.checks.push(
     "private-settings-receipt-and-config-backups",
-    "actual-v2-v3-migration-and-private-exact-backup",
+    "actual-v2-v4-migration-and-private-exact-backup",
   );
   assert.equal((await integrate("disconnect")).installed, false);
   assert.equal(await readFile(env.OMC_OPENCODE_CONFIG_PATH, "utf8"), original);

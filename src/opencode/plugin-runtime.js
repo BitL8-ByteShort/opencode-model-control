@@ -369,6 +369,8 @@ export function createMediaRoutingHooks({
         parent: operation.parent,
         childID,
         id: childRoute.id,
+        connectionId: childRoute.connectionId ?? null,
+        bindingRevision: childRoute.bindingRevision ?? null,
         messageID: childRoute.messageID,
       };
       children.set(childID, assignment);
@@ -386,7 +388,11 @@ export function createMediaRoutingHooks({
     try {
       const value = await loadPolicy();
       const catalog = validateCatalog(value.catalog);
-      return { catalog, settings: migrateSettings(value.settings, catalog) };
+      return {
+        catalog,
+        settings: migrateSettings(value.settings, catalog),
+        connections: value.connections ?? [],
+      };
     } catch {
       fail("OMC_MEDIA_POLICY_UNAVAILABLE");
     }
@@ -411,7 +417,14 @@ export function createMediaRoutingHooks({
       fail("OMC_HOST_INVENTORY_UNAVAILABLE");
     }
   }
-  function select(current, host, requirements, retainedID) {
+  function connectionFor(current, modelId) {
+    const providerId = String(modelId ?? "").split("/")[0];
+    return (
+      current.connections?.find((item) => item.providerId === providerId) ?? null
+    );
+  }
+  function select(current, host, requirements, retained) {
+    const retainedID = typeof retained === "string" ? retained : retained?.id;
     const configured =
       retainedID ?? current.settings.roleAssignments[requirements.role];
     const candidates = eligibleModelsForRole({ ...current, ...requirements });
@@ -431,7 +444,20 @@ export function createMediaRoutingHooks({
       !hostSupports(host.get(selected.id), requirements)
     )
       fail("OMC_DISPATCH_IDENTITY_CONFLICT");
-    return selected;
+    const connection = connectionFor(current, selected.id);
+    const expected =
+      retained && typeof retained === "object"
+        ? retained
+        : current.settings.roleConnections?.[requirements.role];
+    if (
+      expected?.connectionId &&
+      expected?.bindingRevision &&
+      connection &&
+      (connection.id !== expected.connectionId ||
+        connection.bindingRevision !== expected.bindingRevision)
+    )
+      fail("OMC_DISPATCH_IDENTITY_CONFLICT");
+    return { ...selected, connection };
   }
   return {
     async event({ event }) {
@@ -515,7 +541,7 @@ export function createMediaRoutingHooks({
           current,
           host,
           requirements,
-          authorizedRepair?.id,
+          authorizedRepair,
         );
         output.message.model = modelReference(selected.id);
         delete output.message.variant;
@@ -535,6 +561,12 @@ export function createMediaRoutingHooks({
         routes.set(input.sessionID, {
           repair: authorizedRepair,
           id: selected.id,
+          connectionId:
+            selected.connection?.id ?? authorizedRepair?.connectionId ?? null,
+          bindingRevision:
+            selected.connection?.bindingRevision ??
+            authorizedRepair?.bindingRevision ??
+            null,
           requirements,
           agent: output.message.agent,
           messageID: output.message.id,
@@ -656,10 +688,18 @@ export function createMediaRoutingHooks({
         route.repair?.active &&
           route.repair.messageID === input.message.id &&
           route.repair.workflow === workflows.get(route.repair.parent)
-          ? route.repair.id
+          ? route.repair
           : undefined,
       );
       const actual = input.model;
+      if (
+        route.connectionId &&
+        route.bindingRevision &&
+        selected.connection &&
+        (selected.connection.id !== route.connectionId ||
+          selected.connection.bindingRevision !== route.bindingRevision)
+      )
+        fail("OMC_DISPATCH_IDENTITY_CONFLICT");
       if (
         (input.provider?.id ?? input.provider?.info?.id) !==
           actual?.providerID ||
@@ -765,10 +805,12 @@ export function createMediaRoutingHooks({
             current,
             await inventory(),
             { role: "code-worker", modalities: ["text"], access: "write" },
-            child.id,
+            child,
           );
           operation.repair = {
             id: child.id,
+            connectionId: child.connectionId ?? null,
+            bindingRevision: child.bindingRevision ?? null,
             parent: input.sessionID,
             workflow,
             active: true,
