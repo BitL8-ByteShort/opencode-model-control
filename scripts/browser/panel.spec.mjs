@@ -442,7 +442,7 @@ test("policy enrollment, blocked off switch and pins remain explicit across Free
   await expect(
     page.getByRole("combobox", { name: "Reviewer", exact: false }),
   ).toHaveValue("fixture/Blocked");
-  await expect(blocked).toContainText("pricing");
+  await expect(blocked).toContainText("verified free");
   await enroll(page).uncheck();
   const alpha = row(page, "Alpha");
   await expect(alpha.getByRole("checkbox")).not.toBeChecked();
