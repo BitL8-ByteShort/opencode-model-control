@@ -25,6 +25,7 @@ import {
 import { classifyRouteRequest } from "./task-classifier.js";
 import { discoverOpenCode, mergeDiscoveredCatalog } from "./opencode-cli.js";
 import { readOpenCodeUsage } from "./opencode-usage.js";
+import { readUsageAttribution } from "./usage-attribution-store.js";
 import { runOpenCodeRuntimeQualification } from "./runtime-qualification.js";
 import {
   appendRuntimeQualificationResult,
@@ -617,7 +618,22 @@ export class ControlService {
   }
 
   async getUsage(window) {
-    return this.usageReader({ window });
+    const usage = await this.usageReader({ window });
+    try {
+      usage.attributed = await readUsageAttribution({
+        settingsPath: this.settingsPath,
+      });
+    } catch {
+      usage.attributed = {
+        observations: [],
+        coverage: {
+          firstObservedAt: null,
+          droppedCount: 0,
+          truncated: true,
+        },
+      };
+    }
+    return usage;
   }
 
   async getOpenCodeIntegration() {

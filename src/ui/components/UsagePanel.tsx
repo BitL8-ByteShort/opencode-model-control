@@ -8,11 +8,8 @@ const windows: Array<{ label: string; value: UsageWindow }> = [
   { label: "All time", value: "all" },
 ];
 
-function formatCount(value: number) {
-  return new Intl.NumberFormat(undefined, { notation: value >= 100_000 ? "compact" : "standard", maximumFractionDigits: 1 }).format(value);
-}
-
-function formatCurrency(value: number) {
+function formatCurrency(value: number | null | undefined) {
+  if (value === null || value === undefined) return "Not reported";
   const maximumFractionDigits = value > 0 && value < 0.01 ? 4 : 2;
   return new Intl.NumberFormat(undefined, {
     style: "currency",
@@ -20,6 +17,11 @@ function formatCurrency(value: number) {
     minimumFractionDigits: 2,
     maximumFractionDigits,
   }).format(value);
+}
+
+function formatCount(value: number | null | undefined) {
+  if (value === null || value === undefined) return "Not reported";
+  return new Intl.NumberFormat(undefined, { notation: value >= 100_000 ? "compact" : "standard", maximumFractionDigits: 1 }).format(value);
 }
 
 function formatGeneratedAt(value?: string) {
@@ -61,7 +63,7 @@ export function UsagePanel({
         <div>
           <p className="section-kicker">Local OpenCode accounting</p>
           <h2>Usage</h2>
-          <p className="panel-description">Aggregate token and recorded-cost history from OpenCode. Prompts and credentials are never read.</p>
+          <p className="panel-description">Tokens are usage. OpenCode-recorded cost is not a provider bill or subscription charge. Prompts and credentials are never read.</p>
         </div>
         <Button disabled={loading} icon="refresh" onClick={onReload} tone="quiet">
           {loading ? "Refreshing…" : "Refresh usage"}
@@ -100,7 +102,7 @@ export function UsagePanel({
             <article><span>Sessions</span><strong>{formatCount(totals.sessions)}</strong></article>
             <article><span>Messages</span><strong>{formatCount(totals.messages)}</strong></article>
             <article><span>Total tokens</span><strong>{formatCount(totals.tokens.total)}</strong></article>
-            <article><span>Recorded cost</span><strong>{formatCurrency(totals.costUsd)}</strong></article>
+            <article><span>OpenCode-recorded cost</span><strong>{formatCurrency(totals.costUsd)}</strong></article>
           </div>
 
           <div className="usage-breakdown">
@@ -115,8 +117,8 @@ export function UsagePanel({
             <div className="usage-accounting-note">
               <Icon name="help" size={18} />
               <div>
-                <strong>Provider-reported accounting</strong>
-                <p>Recorded cost is an estimate stored by OpenCode, not a provider invoice. A zero can also mean the provider did not report usage.</p>
+                <strong>OpenCode-recorded accounting</strong>
+                <p>Recorded cost is stored by OpenCode, not a provider invoice. Missing values stay unreported. Quota: {usage.quota?.status === "not-reported" || !usage.quota ? "Not reported" : "Reported"}.</p>
                 <small>Updated {formatGeneratedAt(usage.generatedAt)}</small>
               </div>
             </div>

@@ -421,7 +421,7 @@ test("an existing v0.1.2 receipt upgrades without claiming user-owned values", a
   assert.equal(upgraded.plugin.length, 1);
   assert.ok(upgradedReceipt.entries.some(({ path }) => path.join(".") === "plugin"));
   assert.ok(upgradedReceipt.entries.some(({ path }) => path.join(".") === "default_agent"));
-  assert.equal(upgradedReceipt.managedSurfaceVersion, 2);
+  assert.equal(upgradedReceipt.managedSurfaceVersion, 3);
 });
 
 test("a new package instance requires and safely applies an update from older valid package paths", async (t) => {
@@ -498,7 +498,7 @@ test("a new package instance requires and safely applies an update from older va
   assert.deepEqual(updated.plugin, ["user-plugin", currentPluginUrl]);
   assert.equal(updated.plugin.includes(oldPluginUrl), false);
   assert.equal(updated.default_agent, "user-primary");
-  assert.equal(receipt.managedSurfaceVersion, 2);
+  assert.equal(receipt.managedSurfaceVersion, 3);
   assert.deepEqual(
     receipt.entries.find(({ path }) => path.join(".") === "mcp.model-control").value.command,
     currentCommand,

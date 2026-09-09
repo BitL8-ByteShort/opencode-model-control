@@ -102,7 +102,10 @@ test("usage parser returns bounded provider-reported totals and model attributio
   });
 
   assert.equal(result.generatedAt, "2026-08-30T12:00:00.000Z");
-  assert.equal(result.accounting, "provider-reported");
+  assert.equal(result.schemaVersion, 2);
+  assert.equal(result.accounting, "opencode-recorded");
+  assert.equal(result.costLabel, "OpenCode-recorded cost");
+  assert.equal(result.quota.status, "not-reported");
   assert.equal(result.totals.tokens.total, 435);
   assert.equal(result.byModel[0].id, "opencode/big-pickle");
   assert.equal(result.byModel[0].tokens.total, 395);
@@ -120,6 +123,32 @@ test("usage parser returns bounded provider-reported totals and model attributio
     JSON.stringify(result),
     /session_id|message_id|prompt|content|credential|access_token|directory|title/iu,
   );
+});
+
+test("missing cost stays unreported and explicit zero remains zero", () => {
+  const missing = parseOpenCodeUsageRows(
+    JSON.stringify(
+      rows({
+        summary: { cost_usd: null, tokens_reasoning: null },
+        models: [
+          {
+            ...rows()[1],
+            cost_usd: null,
+            tokens_reasoning: null,
+          },
+        ],
+        summary: { cost_usd: null, tokens_reasoning: null, model_count: 1 },
+      }),
+    ),
+    { generatedAt: "2026-08-30T12:00:00.000Z" },
+  );
+  assert.equal(missing.totals.costUsd, null);
+  assert.equal(missing.totals.tokens.reasoning, null);
+  const zero = parseOpenCodeUsageRows(
+    JSON.stringify(rows({ summary: { cost_usd: 0 } })),
+    { generatedAt: "2026-08-30T12:00:00.000Z" },
+  );
+  assert.equal(zero.totals.costUsd, 0);
 });
 
 test("an empty compatible database is distinct from unavailable usage", () => {

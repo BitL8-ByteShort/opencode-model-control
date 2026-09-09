@@ -35,7 +35,7 @@ const MAX_MCP_OUTPUT_BYTES = 1024 * 1024;
 const MCP_HANDSHAKE_TIMEOUT_MS = 10_000;
 const MCP_PROTOCOL_VERSION = "2025-11-25";
 const RECEIPT_SCHEMA_VERSION = 1;
-const MANAGED_SURFACE_VERSION = 2;
+const MANAGED_SURFACE_VERSION = 3;
 const OWNED_ROOTS = ["mcp", "tools", "agent"];
 const OWNED_PATHS = [
   ["mcp", "model-control"],

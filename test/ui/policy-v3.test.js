@@ -64,7 +64,7 @@ test("cost policy never erases paid intent or pins and current expired price blo
         settings,
       )
       .join(" "),
-    /unavailable.*pricing/i,
+    /unavailable.*verified free/i,
   );
 });
 test("role blocking explains each missing capability and accepts roleCapabilities as the convenience list", () => {

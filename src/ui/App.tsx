@@ -324,7 +324,7 @@ export default function App() {
       <div className={localOnly ? "lock-pill lock-pill--positive" : "lock-pill lock-pill--warning"} title="The control service binds locally; hosted model requests may still leave this computer.">
         <StatusDot tone={localOnly ? "positive" : "warning"} /><span>Control plane {localOnly ? "local-only" : "not confirmed local"}</span>
       </div>
-      <div className={paidAllowed ? "lock-pill lock-pill--warning" : "lock-pill"}><Icon name="lock" size={15} /><span>{paidAllowed ? "Paid models allowed" : "Verified free only"}</span></div>
+      <div className={paidAllowed ? "lock-pill lock-pill--warning" : "lock-pill"}><Icon name="lock" size={15} /><span>{paidAllowed ? (draftSettings?.paidEligibility === "configured-connections" ? "Configured paid connections" : "Legacy Paid") : "Verified free only"}</span></div>
       {dirty ? <span className="unsaved-pill"><StatusDot tone="warning" />Unsaved changes</span> : null}
       {dirty ? <Button disabled={saving} onClick={reset} tone="quiet">Revert</Button> : null}
       <Button disabled={!dirty || saving} onClick={save} tone="primary">{saving ? "Saving…" : "Save changes"}</Button>

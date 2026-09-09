@@ -75,7 +75,7 @@ test("core interactions expose semantic labels and unsaved-state protection", as
   assert.match(config, /Direct edits to Model Control-owned entries/);
   assert.match(roles, />Free<\/button>/);
   assert.match(roles, />Paid<\/button>/);
-  assert.match(roles, /Provider charges may apply/);
+  assert.match(roles, /Allow configured paid connections/);
   assert.match(roles, /enable on selection/);
   assert.match(roles, /selectRoleModel/);
   assert.match(roles, /isRoleModelAssignable/);
@@ -91,7 +91,7 @@ test("core interactions expose semantic labels and unsaved-state protection", as
   assert.match(shell, /hashchange/);
   assert.match(shell, /aria-current/);
   assert.match(usage, /Prompts and credentials are never read/);
-  assert.match(usage, /Provider-reported accounting/);
+  assert.match(usage, /OpenCode-recorded accounting/);
   assert.match(usage, /No zero totals were substituted/);
   assert.match(usage, /OpenCode usage by model/);
 });

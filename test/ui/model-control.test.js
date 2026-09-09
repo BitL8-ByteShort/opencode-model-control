@@ -262,7 +262,11 @@ test("role selection keeps cost, availability, capability, and automatic opt-in 
   const paidSettings = setCostMode(freeSettings, allModels, "paid");
 
   assert.equal(isRoleModelAssignable(paid, freeSettings, "code-worker"), false);
-  assert.equal(isRoleModelAssignable(unknown, paidSettings, "code-worker"), false);
+  assert.equal(isRoleModelAssignable(unknown, paidSettings, "code-worker"), true);
+  assert.equal(
+    isRoleModelAssignable(unknown, { ...paidSettings, paidEligibility: "verified-pricing" }, "code-worker"),
+    false,
+  );
   assert.equal(isRoleModelAssignable(unavailable, paidSettings, "code-worker"), false);
   assert.equal(isRoleModelAssignable(incompatible, paidSettings, "code-worker"), false);
 

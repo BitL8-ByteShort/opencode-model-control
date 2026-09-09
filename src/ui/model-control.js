@@ -85,9 +85,10 @@ export function modelCostClass(model) {
 
 export function isModelCostAllowed(model, settings) {
   const priceClass = modelCostClass(model);
-  return settings?.costPolicy === "known-cost"
-    ? priceClass !== "unknown"
-    : priceClass === "free";
+  if (settings?.costPolicy !== "known-cost") return priceClass === "free";
+  if (settings?.paidEligibility === "configured-connections")
+    return model?.api?.urlValid !== false;
+  return priceClass !== "unknown";
 }
 
 export function modelInputModalities(model) {
@@ -383,6 +384,17 @@ export function setCostMode(settings, _catalog, mode) {
     ...settings,
     costPreference: mode === "paid" ? "paid-first" : "free-first",
     costPolicy: mode === "paid" ? "known-cost" : "free-only",
+    paidEligibility:
+      mode === "paid" ? "configured-connections" : settings.paidEligibility,
+  };
+}
+
+export function adoptConfiguredPaid(settings) {
+  return {
+    ...settings,
+    costPolicy: "known-cost",
+    costPreference: "paid-first",
+    paidEligibility: "configured-connections",
   };
 }
 
@@ -406,13 +418,18 @@ export function modelEligibilityReasons(
       "Saved availability exclusion; remove it in saved settings before use.",
     );
   const cost = modelCostClass(model);
-  if (cost === "unknown")
+  const configuredPaid =
+    settings?.costPolicy === "known-cost" &&
+    settings?.paidEligibility === "configured-connections";
+  if (cost === "unknown" && !configuredPaid)
     reasons.push(
-      "Unknown or expired pricing; refresh metadata for current verified rates.",
+      settings?.costPolicy === "known-cost"
+        ? "Legacy Paid policy requires verified pricing. Save the new Paid option to allow configured connections."
+        : "Free policy requires verified free access.",
     );
   else if (cost === "paid" && settings.costPolicy !== "known-cost")
     reasons.push(
-      "Free policy blocks paid pricing; choose Paid to allow known charges.",
+      "Free policy requires verified free access.",
     );
   if (role) reasons.push(...roleCapabilityReasons(model, role));
   if (includeIntent && !modelIntentEnabled(settings, model.id))

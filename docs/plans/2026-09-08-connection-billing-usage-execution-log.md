@@ -59,3 +59,41 @@ These are not verified fixes. The correct Task 2 contract treats raw `''`/absent
 
 ## Task 3
 
+**Files:** `src/core/connections.js`, `src/server/connection-store.js`, `src/opencode/connection-observer.js`, settings v4, schemas, snapshot wiring.
+
+**Result:** Existing Paid migrates to `paidEligibility: verified-pricing`. Fresh installs stay Free. One host slot is one connection; API keys are not auto-labelled metered API. `node --test` on connection/settings/schema tests: 49 pass.
+
+**Commit:** `ef07545`
+
+## Task 4
+
+**Files:** `src/core/eligibility.js`, `src/core/catalog.js`, `src/server/service.js`
+
+**Result:** Shared `resolveEligibility`. Configured-connection Paid allows unknown estimates; Free and legacy Paid stay verified-price gated. Invalid endpoints and binding changes still block.
+
+**Commit:** `55901ca`
+
+## Task 5
+
+**Files:** `src/opencode/plugin-runtime.js`, live-routing tests
+
+**Result:** Provider-level opaque `fetch` accepted under Paid when binding matches. Free still rejects it. Model/task fetch and endpoint overrides still conflict. Hook tests pass; full isolated host auth-loader path not yet run (`npm run test:host`).
+
+**Commit:** `87be12d`
+
+## Task 6
+
+**Files:** `src/core/usage-accounting.js`, `src/server/usage-attribution-store.js`, `src/server/opencode-usage.js`, plugin dispatch capture.
+
+**Result:** Missing cost/tokens stay null. Usage schema 2 labels OpenCode-recorded cost. Quota may be not reported. Attribution store uses private HMAC keys, 90-day/10k/10MiB bounds. Plugin records pending observations without blocking dispatch.
+
+## Task 7
+
+**Files:** Model table connection/access/pricing columns, Paid adoption notice, usage panel labels.
+
+## Task 8
+
+Package 0.4.0, managed surface 3, changelog, CONTRIBUTING, integration, SECURITY, README. No public publish. `npm run test:host` / `test:browser` / packaged acceptance not run in this session.
+
+Pre-existing env: `production-entry` test times out on this Node 24 `--experimental-loader` warning. Source tests otherwise 317/318.
+

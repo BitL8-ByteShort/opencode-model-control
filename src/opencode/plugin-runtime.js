@@ -303,10 +303,44 @@ function optionsMatch(options, api, depth = 0, allowOpaqueFetch = false) {
   return true;
 }
 
+async function captureAttribution({ settingsPath, input, selected, current }) {
+  const {
+    attributionEventKey,
+    readOrCreateAttributionSalt,
+    upsertUsageObservation,
+  } = await import("../server/usage-attribution-store.js");
+  const salt = await readOrCreateAttributionSalt(settingsPath);
+  const role = OWNED_ROLES[input.agent];
+  const binding = current.settings.roleConnections?.[role] ?? null;
+  await upsertUsageObservation({
+    settingsPath,
+    pending: true,
+    observation: {
+      eventKey: attributionEventKey(salt, input.sessionID, input.message.id),
+      observedAt: new Date().toISOString(),
+      connectionId: binding?.connectionId ?? null,
+      bindingRevision: binding?.bindingRevision ?? null,
+      billingKind: "unknown",
+      billingSource: "unknown",
+      tokens: {
+        input: null,
+        output: null,
+        reasoning: null,
+        cacheRead: null,
+        cacheWrite: null,
+      },
+      recordedCost: null,
+      priceSnapshotId: selected.pricing?.digest ?? null,
+    },
+  });
+}
+
 export function createMediaRoutingHooks({
   loadPolicy = loadSavedRoutingPolicy,
   client,
   directory,
+  recordUsage = false,
+  settingsPath = resolveSettingsPath(),
 } = {}) {
   const routes = new Map();
   const readOnlySessions = new Set();
@@ -655,6 +689,14 @@ export function createMediaRoutingHooks({
         (selected.pricing.class === "free" && positiveRate(actual.cost))
       )
         fail("OMC_DISPATCH_PRICING_CONFLICT");
+      if (recordUsage) {
+        void captureAttribution({
+          settingsPath,
+          input,
+          selected,
+          current,
+        }).catch(() => {});
+      }
     },
     async "permission.ask"(input, output) {
       if (readOnlySessions.has(input?.sessionID)) output.status = "deny";

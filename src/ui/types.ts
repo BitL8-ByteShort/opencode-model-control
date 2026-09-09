@@ -245,12 +245,12 @@ export interface RuntimeQualificationSummary {
 export type UsageWindow = "7d" | "30d" | "90d" | "all";
 
 export interface UsageTokens {
-  input: number;
-  output: number;
-  reasoning: number;
-  cacheRead: number;
-  cacheWrite: number;
-  total: number;
+  input: number | null;
+  output: number | null;
+  reasoning: number | null;
+  cacheRead: number | null;
+  cacheWrite: number | null;
+  total: number | null;
 }
 
 export interface ModelUsage {
@@ -259,21 +259,22 @@ export interface ModelUsage {
   modelId: string;
   sessions: number;
   messages: number;
-  costUsd: number;
+  costUsd: number | null;
   tokens: UsageTokens;
 }
 
 export interface OpenCodeUsage {
-  schemaVersion: 1;
+  schemaVersion: 2;
   source: "opencode-local-accounting";
-  accounting: "provider-reported";
+  accounting: "opencode-recorded";
+  costLabel?: string;
   window: UsageWindow;
   windowDays: number | null;
   generatedAt: string;
   totals: {
     sessions: number;
     messages: number;
-    costUsd: number;
+    costUsd: number | null;
     tokens: UsageTokens;
   };
   byModel: ModelUsage[];
@@ -285,6 +286,15 @@ export interface OpenCodeUsage {
     zeroTokenMessages: number;
     earliestMessageAt: string | null;
     latestMessageAt: string | null;
+  };
+  quota?: { status: string };
+  attributed?: {
+    observations: unknown[];
+    coverage: {
+      firstObservedAt: string | null;
+      droppedCount: number;
+      truncated: boolean;
+    };
   };
   caveats: string[];
 }

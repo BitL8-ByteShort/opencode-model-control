@@ -8,7 +8,7 @@ The control panel runs on `127.0.0.1`. OpenCode remains responsible for provider
 
 The running app is authoritative for model names, availability, pricing evidence, and role eligibility.
 
-> This source documents **0.3.0**; `@latest` installs the version currently published on [npm](https://www.npmjs.com/package/opencode-model-control). Check the [release index](https://github.com/BitL8-ByteShort/opencode-model-control/releases) for availability and the [support matrix](docs/support-matrix.md) for verified compatibility.
+> This source documents **0.4.0**; `@latest` installs the version currently published on [npm](https://www.npmjs.com/package/opencode-model-control). Check the [release index](https://github.com/BitL8-ByteShort/opencode-model-control/releases) for availability and the [support matrix](docs/support-matrix.md) for verified compatibility. 0.4.0 is implemented in this tree; public publication is a separate authorized gate.
 
 ## What it does
 
@@ -110,7 +110,7 @@ The connector writes absolute Node and package CLI paths, so a source checkout d
 
 The [GitHub release index](https://github.com/BitL8-ByteShort/opencode-model-control/releases) lists published versioned tarballs and checksums. Download the exact release asset, verify its SHA-256 against that release's checksum, then install the local file with `npm install --global /absolute/path/to/downloaded-package.tgz`. Historical package digests are recorded in the [historical package ledger](https://github.com/BitL8-ByteShort/opencode-model-control/blob/v0.2.1/packages/README.md). The [release checklist](docs/releasing.md) contains the maintainer-only 0.3.0 publication and verification procedure.
 
-## What “Update available models” means (0.3.0)
+## What “Update available models” means (0.4.0)
 
 The button asks the installed OpenCode CLI for its effective model list with plugin-aware discovery and `--refresh`. This reflects OpenCode's resolved provider configuration, including its provider and model filters.
 
