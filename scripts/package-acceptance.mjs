@@ -421,7 +421,11 @@ try {
     if (scenario.schema === 3)
       legacySettings.autoIncludeNewModels = scenario.autoInclude;
     legacySettings.roleAssignments.reviewer = "absent/explicit-pin";
-    legacySettings.modelControls["absent/disabled-model"] =
+    // 0.2.1 discards unknown control identities during its own Connect. Use a
+    // catalog identity there; 0.3.0 must also preserve absent disabled identities.
+    const disabledId = scenario.schema === 3 ? "absent/disabled-model" : Object.keys(legacySettings.modelControls)[0];
+    assert.ok(disabledId, `${label}: baseline must expose a model to disable`);
+    legacySettings.modelControls[disabledId] =
       scenario.schema === 3
         ? { selection: "disabled", available: false }
         : { enabled: false, available: false };
@@ -447,6 +451,8 @@ try {
       scenario.surface,
     );
     const legacySaved = await readFile(settingsPath, "utf8");
+    assert.ok(JSON.parse(legacySaved).modelControls[disabledId], `${label}: disabled choice must exist before migration`);
+    if (scenario.schema === 3) assert.equal(JSON.parse(legacySaved).roleAssignments.reviewer, "absent/explicit-pin");
     const beforeUpdate = await readFile(env.OMC_OPENCODE_CONFIG_PATH, "utf8");
     assert.equal((await integrate("status")).code, "UPDATE_REQUIRED");
     // Merely observing an outdated connection must never install a new surface.
@@ -487,7 +493,7 @@ try {
         migrated.modelControls,
         JSON.parse(legacySaved).modelControls,
       );
-    assert.deepEqual(migrated.modelControls["absent/disabled-model"], {
+    assert.deepEqual(migrated.modelControls[disabledId], {
       selection: "disabled",
       available: false,
     });
