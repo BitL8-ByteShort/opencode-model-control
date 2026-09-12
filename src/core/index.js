@@ -4,6 +4,7 @@ export {
   COMPLEXITIES,
   COST_POLICIES,
   COST_PREFERENCES,
+  PAID_ELIGIBILITY,
   KNOWN_MODEL_IDS,
   MODEL_ROLES,
   MODALITIES,
@@ -31,6 +32,7 @@ export {
   validateSettings,
   assertExplicitAssignments,
 } from "./settings.js";
+export { resolveEligibility } from "./eligibility.js";
 export { planRoute } from "./planner.js";
 export { sanitizeResult, sanitizeText } from "./sanitize.js";
 

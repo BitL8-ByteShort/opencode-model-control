@@ -78,6 +78,11 @@ const fake = createServer(async (req, res) => {
       ["a", "b"].includes(body.model),
       `Invalid provider model ${body.model}`,
     );
+    assert.equal(
+      req.headers["x-omc-fixture-transport"],
+      "subscription",
+      "omctest auth-loader fetch must handle the provider request",
+    );
     evidence.requests.push({
       scenario: active,
       path: req.url,
@@ -170,6 +175,8 @@ try {
   };
   await mkdir(join(root, "policy"));
   await mkdir(join(root, "project"));
+  settings.costPolicy = "known-cost";
+  settings.paidEligibility = "verified-pricing";
   await pin("a");
   const hm = (id) => ({
     id,
@@ -183,6 +190,38 @@ try {
   });
   // A fixture-only second plugin changes ordinary saved files between the real
   // OMC chat.message selection and chat.params revalidation. It grants nothing.
+  const fetchMarker = join(root, "subscription-fetch-used");
+  const subscriptionPlugin = join(root, "subscription-auth.mjs");
+  await writeFile(
+    subscriptionPlugin,
+    `import { appendFile } from "node:fs/promises";
+const inner = globalThis.fetch.bind(globalThis);
+async function subscriptionFetch(input, init = {}) {
+  await appendFile(${JSON.stringify(fetchMarker)}, "1");
+  if (input instanceof Request) {
+    const headers = new Headers(input.headers);
+    headers.set("x-omc-fixture-transport", "subscription");
+    return inner(new Request(input, { headers }));
+  }
+  const headers = new Headers(init.headers);
+  headers.set("x-omc-fixture-transport", "subscription");
+  return inner(input, { ...init, headers });
+}
+export default async () => ({
+  auth: {
+    provider: "omctest",
+    async loader(getAuth) {
+      const auth = await getAuth();
+      if (auth?.type !== "oauth") return {};
+      return {
+        apiKey: "opencode-oauth-dummy-key",
+        fetch: subscriptionFetch,
+      };
+    },
+  },
+});
+`,
+  );
   const interleavePlugin = join(root, "interleave.mjs");
   await writeFile(
     interleavePlugin,
@@ -208,12 +247,13 @@ export default async () => ({ "chat.message": async (_input, output) => {
         npm: "@ai-sdk/openai-compatible",
         name: "Fixture",
         env: [],
-        options: { baseURL: endpoint, apiKey: "fixture" },
+        options: { baseURL: endpoint },
         models: { a: hm("a"), b: hm("b") },
       },
     },
     agent: buildOpenCodeConfig().agent,
     plugin: [
+      pathToFileURL(subscriptionPlugin).href,
       pathToFileURL(join(targetRoot, "src/opencode/plugin.js")).href,
       pathToFileURL(interleavePlugin).href,
     ],
@@ -231,6 +271,20 @@ export default async () => ({ "chat.message": async (_input, output) => {
   const configBytes = JSON.stringify(config);
   await writeFile(configPath, configBytes);
   await writeFile(join(root, "models.json"), "{}");
+  const auth = {
+    omctest: {
+      type: "oauth",
+      access: "fixture-access-token",
+      refresh: "fixture-refresh-token",
+      expires: Date.now() + 86400000,
+    },
+  };
+  await mkdir(join(root, "data/opencode"), { recursive: true });
+  await writeFile(
+    join(root, "data/opencode/auth.json"),
+    JSON.stringify(auth),
+    { mode: 0o600 },
+  );
   const env = {
     PATH: process.env.PATH,
     HOME: root,
@@ -247,7 +301,7 @@ export default async () => ({ "chat.message": async (_input, output) => {
     OPENCODE_MODELS_PATH: join(root, "models.json"),
     OPENCODE_DISABLE_SHARE: "1",
     OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS: "true",
-    OPENCODE_AUTH_CONTENT: "{}",
+    OPENCODE_AUTH_CONTENT: JSON.stringify(auth),
     XDG_CONFIG_HOME: join(root, "config"),
     XDG_CACHE_HOME: join(root, "cache"),
     XDG_DATA_HOME: join(root, "data"),
@@ -424,9 +478,17 @@ export default async () => ({ "chat.message": async (_input, output) => {
             ...state.settings.roleAssignments,
             "code-worker": "omctest/c",
           },
+          roleConnections: {
+            ...state.settings.roleConnections,
+            "code-worker": {
+              connectionId: state.connections.find(connection => connection.providerId === "omctest").id,
+              bindingRevision: state.connections.find(connection => connection.providerId === "omctest").bindingRevision,
+            },
+          },
         },
         {
           expectedSettingsRevision: state.settingsRevision,
+          expectedConnectionRevision: state.connectionRevision,
           catalogRevision: state.catalogRevision,
         },
       );
@@ -821,6 +883,18 @@ export default async () => ({ "chat.message": async (_input, output) => {
     assert.ok(result.name || result.info?.error);
     assert.equal(evidence.requests.length - start, 1);
     handler = async () => ({});
+  });
+  await check("subscription-shaped-provider-fetch", async () => {
+    settings.costPolicy = "known-cost";
+    settings.paidEligibility = "configured-connections";
+    await pin("b");
+    const start = evidence.requests.length;
+    await turn(await session(), "omc-code-worker", "SUBSCRIPTION_FETCH");
+    assert.ok(evidence.requests.length > start);
+    assert.match(await readFile(fetchMarker, "utf8"), /1/);
+    settings.costPolicy = "free-only";
+    settings.paidEligibility = "verified-pricing";
+    await pin("a");
   });
   evidence.passed = true;
 } finally {

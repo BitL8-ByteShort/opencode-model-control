@@ -32,6 +32,14 @@ async function setup(t, options = {}) {
   t.after(() => service.close());
   return { service, settingsPath, directory };
 }
+test("catalog refresh persists observed connections from live models", async (t) => {
+  const { service } = await setup(t);
+  const connections = service.getState().connections;
+  assert.ok(Array.isArray(connections));
+  assert.equal(connections.some((item) => item.providerId === "new"), true);
+  assert.equal(connections.find((item) => item.providerId === "new").authKind, "unknown");
+});
+
 test("startup and periodic catalog refresh enroll new models without creating saved intent", async (t) => {
   let tick,
     cleared = false;
@@ -102,8 +110,9 @@ test("blocked saved pins survive refresh and unrelated saves; newly edited block
         ...state.settings.roleAssignments,
         orchestrator: "new/model",
       },
+      roleConnections: { ...state.settings.roleConnections, orchestrator: { connectionId: state.connections[0].id, bindingRevision: state.connections[0].bindingRevision } },
     },
-    { expectedSettingsRevision: state.settingsRevision },
+    { expectedSettingsRevision: state.settingsRevision, expectedConnectionRevision: state.connectionRevision },
   );
   service.metadataFetch = async () =>
     new Response(
@@ -125,8 +134,9 @@ test("blocked saved pins survive refresh and unrelated saves; newly edited block
           ...state.settings.roleAssignments,
           reviewer: "new/model",
         },
+        roleConnections: { ...state.settings.roleConnections, reviewer: { connectionId: state.connections[0].id, bindingRevision: state.connections[0].bindingRevision } },
       },
-      { expectedSettingsRevision: state.settingsRevision },
+      { expectedSettingsRevision: state.settingsRevision, expectedConnectionRevision: state.connectionRevision },
     ),
     (e) => e.statusCode === 409 && e.code === "SELECTION_CONFLICT",
   );

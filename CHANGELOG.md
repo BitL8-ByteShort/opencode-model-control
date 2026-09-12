@@ -2,6 +2,19 @@
 
 All notable changes to OpenCode Model Control are recorded here. The project follows [Semantic Versioning](https://semver.org/).
 
+## 0.4.0
+
+- Treat empty SDK-default endpoints as unspecified rather than invalid, without letting a missing public URL certify a custom gateway.
+- Accept OpenCode provider-owned authentication transports on Paid routes when the exact model binding matches. Do not inspect transport source or fall back to another billing connection.
+- Add connection snapshots and settings schema 4. Existing Paid installs migrate to `verified-pricing`; selecting the new Paid control adopts `configured-connections`.
+- Free routing still requires verified free prices. Configured Paid access can use a host route when public estimates are unavailable.
+- Report tokens separately from OpenCode-recorded cost. Missing cost stays unreported. Quota may be not reported. Historical usage is not relabelled after a login change.
+- Show configured connection billing declarations, evidence sources, exact role bindings, and separate captured usage by billing kind and currency. Connection edits require current revisions; drafts survive conflicts.
+- Reload connection evidence in planner and MCP routes. Bound attribution work and retention, preserve assistant-message history and price snapshots, and flush on host disposal.
+- Verify upgrades from the exact public 0.3.0 package under both Free and legacy Paid policy, including private backups and guarded update/recovery.
+- Bind mixed-endpoint providers to their per-model route mapping, including endpoint/SDK swaps. Changed connections invalidate pins and retained repairs and discard stale quota.
+- Managed integration surface version 3; an explicit Connect/update and OpenCode restart is required for plugin behavior changes.
+
 ## 0.3.0
 
 - Replace historical free-model authorization with exact provider/model/API pricing evidence from credential-free public Models.dev metadata, including all supported supplied billing dimensions. Refresh every 15 minutes while active; expire evidence after 24 hours and block missing, conflicting, malformed, or expired pricing at dispatch.

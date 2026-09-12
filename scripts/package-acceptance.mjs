@@ -206,7 +206,7 @@ try {
     assert.equal(proof.tarballSha256, sha256);
     assert.equal(proof.host, host.version);
     assert.equal(proof.passed, true);
-    assert.equal(proof.scenarios.length, 19);
+    assert.ok(proof.scenarios.length >= 20);
     evidence.mockedProviderRequests += proof.requests.length;
     evidence.hostAcceptance.push({
       host: proof.host,
@@ -277,7 +277,7 @@ try {
     0,
     "Installed production UI browser scenarios failed; see redacted browser evidence",
   );
-  assert.equal(report.stats.expected, 12);
+  assert.ok(report.stats.expected >= 14);
   assert.equal(report.stats.unexpected, 0);
   assert.equal(report.stats.skipped, 0);
   assert.equal(report.stats.flaky, 0);
@@ -306,83 +306,221 @@ try {
   assert.equal((await integrate("disconnect")).installed, false);
   assert.equal(await readFile(env.OMC_OPENCODE_CONFIG_PATH, "utf8"), original);
   evidence.checks.push("fresh-current-connect-status-disconnect");
-  // Upgrade starts from the old version's own state, never a downgrade of
-  // the newer catalog that the independent fresh-install fixture just wrote.
-  await rename(env.OMC_CONFIG_DIR, join(root, "fresh-install-policy"));
-  await mkdir(env.OMC_CONFIG_DIR);
-  // An actual 0.2.1 install creates its own managed surface and receipt.
-  const prior = resolve("packages/opencode-model-control-0.2.1.tgz");
+  // Fetch only the fixed public baseline. Verify both registry integrity and the
+  // independently recorded release digest before npm can install any bytes.
+  const baselineUrl =
+    "https://registry.npmjs.org/opencode-model-control/-/opencode-model-control-0.3.0.tgz";
+  const baselineSha256 =
+    "26a532b44c96d643c0543a78d2fef1ab2c1a3b83886e6715cef0ab683d3413ab";
+  const metadataResponse = await fetch(
+    "https://registry.npmjs.org/opencode-model-control/0.3.0",
+    { redirect: "error", signal: AbortSignal.timeout(30000) },
+  );
+  assert.equal(metadataResponse.status, 200);
+  const metadata = await metadataResponse.json();
+  assert.equal(metadata.version, "0.3.0");
+  assert.equal(metadata.dist.tarball, baselineUrl);
+  const baselineResponse = await fetch(baselineUrl, {
+    redirect: "error",
+    signal: AbortSignal.timeout(30000),
+  });
+  assert.equal(baselineResponse.status, 200);
+  const baselineBytes = Buffer.from(await baselineResponse.arrayBuffer());
   assert.equal(
-    createHash("sha256")
-      .update(await readFile(prior))
-      .digest("hex"),
-    "b0c0e161bec91ac384d12336d9786aa41870a65d3a291a72760a1e84fb3a489c",
-  );
-  const oldPrefix = join(root, "prior");
-  await run(
-    "npm",
-    [
-      "install",
-      "--prefix",
-      oldPrefix,
-      "--omit=dev",
-      "--no-audit",
-      "--no-fund",
-      prior,
-    ],
-    { NODE_OPTIONS: "" },
-  );
-  const oldCore = await import(
-    pathToFileURL(
-      join(oldPrefix, "node_modules/opencode-model-control/src/core/index.js"),
-    )
-  );
-  const legacySettings = oldCore.createDefaultSettings();
-  assert.equal(legacySettings.schemaVersion, 2);
-  await writeFile(
-    join(env.OMC_CONFIG_DIR, "settings.json"),
-    JSON.stringify(legacySettings),
-    { mode: 0o600 },
+    createHash("sha256").update(baselineBytes).digest("hex"),
+    baselineSha256,
   );
   assert.equal(
-    (
-      await integrate(
-        "connect",
-        join(
+    `sha512-${createHash("sha512").update(baselineBytes).digest("base64")}`,
+    metadata.dist.integrity,
+  );
+  const publicBaseline = join(root, "opencode-model-control-0.3.0.tgz");
+  await writeFile(publicBaseline, baselineBytes, { mode: 0o600 });
+  evidence.upgradeBaseline = {
+    version: "0.3.0",
+    url: baselineUrl,
+    sha256: baselineSha256,
+    integrity: metadata.dist.integrity,
+    retrievedAt: new Date().toISOString(),
+    traffic: "public npm artifact and metadata retrieval; no inference",
+  };
+  const installedBaselines = new Map();
+  for (const scenario of [
+    {
+      version: "0.2.1",
+      schema: 2,
+      surface: 1,
+      paid: false,
+      autoInclude: true,
+      tarball: join(sourceRoot, "packages/opencode-model-control-0.2.1.tgz"),
+      digest:
+        "b0c0e161bec91ac384d12336d9786aa41870a65d3a291a72760a1e84fb3a489c",
+    },
+    {
+      version: "0.3.0",
+      schema: 3,
+      surface: 2,
+      paid: false,
+      autoInclude: true,
+      tarball: publicBaseline,
+      digest: baselineSha256,
+    },
+    {
+      version: "0.3.0",
+      schema: 3,
+      surface: 2,
+      paid: true,
+      autoInclude: false,
+      tarball: publicBaseline,
+      digest: baselineSha256,
+    },
+  ]) {
+    const label = `${scenario.version}-${scenario.paid ? "paid" : "free"}`;
+    // Every upgrade starts from its old package's own catalog and receipt.
+    await rename(env.OMC_CONFIG_DIR, join(root, `policy-before-${label}`));
+    await mkdir(env.OMC_CONFIG_DIR);
+    assert.equal(
+      createHash("sha256")
+        .update(await readFile(scenario.tarball))
+        .digest("hex"),
+      scenario.digest,
+    );
+    let oldInstalled = installedBaselines.get(scenario.version);
+    if (!oldInstalled) {
+      const oldPrefix = join(root, `prior-${scenario.version}`);
+      await run(
+        "npm",
+        [
+          "install",
+          "--prefix",
           oldPrefix,
-          "node_modules/opencode-model-control/bin/opencode-model-control.js",
-        ),
-      )
-    ).installed,
-    true,
-  );
-  const oldReceipt = JSON.parse(
-    await readFile(
-      join(env.OMC_CONFIG_DIR, "opencode-integration.json"),
-      "utf8",
-    ),
-  );
-  assert.equal(oldReceipt.managedSurfaceVersion, 1);
-  const legacySaved = await readFile(
-    join(env.OMC_CONFIG_DIR, "settings.json"),
-    "utf8",
-  );
-  assert.equal(JSON.parse(legacySaved).schemaVersion, 2);
-  assert.equal((await integrate("status")).code, "UPDATE_REQUIRED");
-  assert.equal((await integrate("connect")).installed, true);
-  assert.equal((await integrate("status")).healthy, true);
-  const installedConfig = await readFile(env.OMC_OPENCODE_CONFIG_PATH, "utf8");
-  assert.match(installedConfig, /Preserve this user-owned fixture comment/);
-  const receipt = JSON.parse(
-    await readFile(
-      join(env.OMC_CONFIG_DIR, "opencode-integration.json"),
-      "utf8",
-    ),
-  );
-  assert.equal(receipt.managedSurfaceVersion, 2);
+          "--omit=dev",
+          "--no-audit",
+          "--no-fund",
+          scenario.tarball,
+        ],
+        { NODE_OPTIONS: "" },
+      );
+      oldInstalled = join(oldPrefix, "node_modules/opencode-model-control");
+      assert.equal(
+        JSON.parse(await readFile(join(oldInstalled, "package.json"), "utf8"))
+          .version,
+        scenario.version,
+      );
+      installedBaselines.set(scenario.version, oldInstalled);
+    }
+    const oldCore = await import(
+      pathToFileURL(join(oldInstalled, "src/core/index.js"))
+    );
+    const legacySettings = JSON.parse(
+      JSON.stringify(oldCore.createDefaultSettings()),
+    );
+    assert.equal(legacySettings.schemaVersion, scenario.schema);
+    legacySettings.costPolicy = scenario.paid ? "known-cost" : "free-only";
+    legacySettings.costPreference = scenario.paid ? "paid-first" : "free-first";
+    if (scenario.schema === 3)
+      legacySettings.autoIncludeNewModels = scenario.autoInclude;
+    if (scenario.schema === 3) legacySettings.roleAssignments.reviewer = "absent/explicit-pin";
+    // 0.2.1 rejects unknown identities. Keep its fixture valid; 0.3.0 must also
+    // preserve absent disabled identities and requested pins.
+    const disabledId = scenario.schema === 3 ? "absent/disabled-model" : Object.entries(legacySettings.modelControls).find(([id, control]) => control.enabled && !Object.values(legacySettings.roleAssignments).includes(id))?.[0];
+    assert.ok(disabledId, `${label}: baseline must expose a model to disable`);
+    legacySettings.modelControls[disabledId] =
+      scenario.schema === 3
+        ? { selection: "disabled", available: false }
+        : { enabled: false, available: false };
+    assert.deepEqual(oldCore.validateSettings(legacySettings).modelControls[disabledId], legacySettings.modelControls[disabledId]);
+    const settingsPath = join(env.OMC_CONFIG_DIR, "settings.json");
+    await writeFile(
+      settingsPath,
+      JSON.stringify(legacySettings, null, 2) + "\n",
+      { mode: 0o600 },
+    );
+    assert.equal(
+      (
+        await integrate(
+          "connect",
+          join(oldInstalled, "bin/opencode-model-control.js"),
+        )
+      ).installed,
+      true,
+    );
+    const receiptPath = join(env.OMC_CONFIG_DIR, "opencode-integration.json");
+    const oldReceipt = await readFile(receiptPath, "utf8");
+    assert.equal(
+      JSON.parse(oldReceipt).managedSurfaceVersion,
+      scenario.surface,
+    );
+    const legacySaved = await readFile(settingsPath, "utf8");
+    const savedDisabled = JSON.parse(legacySaved).modelControls[disabledId];
+    if (scenario.schema === 3) assert.deepEqual(savedDisabled, legacySettings.modelControls[disabledId]);
+    else assert.equal(savedDisabled?.enabled, false, `${label}: old Connect must retain the disabled choice`);
+    if (scenario.schema === 3) assert.equal(JSON.parse(legacySaved).roleAssignments.reviewer, "absent/explicit-pin");
+    const beforeUpdate = await readFile(env.OMC_OPENCODE_CONFIG_PATH, "utf8");
+    assert.equal((await integrate("status")).code, "UPDATE_REQUIRED");
+    // Merely observing an outdated connection must never install a new surface.
+    assert.equal(await readFile(receiptPath, "utf8"), oldReceipt);
+    assert.equal(
+      await readFile(env.OMC_OPENCODE_CONFIG_PATH, "utf8"),
+      beforeUpdate,
+    );
+    assert.equal((await integrate("connect")).installed, true);
+    assert.equal((await integrate("status")).healthy, true);
+    assert.match(
+      await readFile(env.OMC_OPENCODE_CONFIG_PATH, "utf8"),
+      /Preserve this user-owned fixture comment/,
+    );
+    assert.equal(
+      JSON.parse(await readFile(receiptPath, "utf8")).managedSurfaceVersion,
+      3,
+    );
+    const migrated = JSON.parse(await readFile(settingsPath, "utf8"));
+    assert.equal(migrated.schemaVersion, 4);
+    assert.equal(migrated.paidEligibility, "verified-pricing");
+    for (const key of [
+      "costPolicy",
+      "costPreference",
+      "roleAssignments",
+      "makeRouterDefault",
+      "maxDelegationDepth",
+      "maxFallbacksPerAssignment",
+    ])
+      assert.deepEqual(
+        migrated[key],
+        JSON.parse(legacySaved)[key],
+        `${label}: ${key}`,
+      );
+    assert.equal(migrated.autoIncludeNewModels, scenario.autoInclude);
+    if (scenario.schema === 3)
+      assert.deepEqual(
+        migrated.modelControls,
+        JSON.parse(legacySaved).modelControls,
+      );
+    assert.deepEqual(migrated.modelControls[disabledId], {
+      selection: "disabled",
+      available: savedDisabled.available,
+    });
+    const migrations = (await readdir(env.OMC_CONFIG_DIR)).filter((name) =>
+      name.startsWith(`settings.json.v${scenario.schema}.backup-`),
+    );
+    assert.equal(migrations.length, 1);
+    const backupPath = join(env.OMC_CONFIG_DIR, migrations[0]);
+    assert.equal(await readFile(backupPath, "utf8"), legacySaved);
+    assert.equal((await stat(backupPath)).mode & 0o777, 0o600);
+    evidence.checks.push(
+      `actual-${label}-policy-preserving-v${scenario.schema}-v4-private-exact-backup`,
+    );
+    // Retain the final Paid fixture for real-host restart and recovery below.
+    if (!scenario.paid) {
+      assert.equal((await integrate("disconnect")).installed, false);
+      assert.equal(
+        await readFile(env.OMC_OPENCODE_CONFIG_PATH, "utf8"),
+        original,
+      );
+    }
+  }
   evidence.checks.push(
-    "actual-0.2.1-managed-surface-upgrade",
-    "connection-update-status",
+    "connection-update-status-without-config-or-receipt-write",
     "config-comment-preserved",
   );
   const hostBinary = hostMatrix[1].binary;
@@ -516,24 +654,7 @@ try {
         0o777,
       0o600,
     );
-  const migrations = (await readdir(env.OMC_CONFIG_DIR)).filter((n) =>
-    n.startsWith("settings.json.v2.backup-"),
-  );
-  assert.equal(migrations.length, 1);
-  assert.equal(
-    await readFile(join(env.OMC_CONFIG_DIR, migrations[0]), "utf8"),
-    legacySaved,
-  );
-  assert.equal(
-    JSON.parse(
-      await readFile(join(env.OMC_CONFIG_DIR, "settings.json"), "utf8"),
-    ).schemaVersion,
-    3,
-  );
-  evidence.checks.push(
-    "private-settings-receipt-and-config-backups",
-    "actual-v2-v3-migration-and-private-exact-backup",
-  );
+  evidence.checks.push("private-settings-receipt-and-config-backups");
   assert.equal((await integrate("disconnect")).installed, false);
   assert.equal(await readFile(env.OMC_OPENCODE_CONFIG_PATH, "utf8"), original);
   await restartHost(false);
@@ -541,6 +662,17 @@ try {
   evidence.checks.push(
     "disconnect-restores-exact-config",
     "actual-host-disconnected-restart-status",
+  );
+  // Recover through the normal guarded connector, never by copying an old
+  // full-config backup over unrelated user changes.
+  assert.equal((await integrate("connect")).installed, true);
+  await restartHost(true);
+  assert.equal((await integrate("status")).healthy, true);
+  assert.equal((await integrate("disconnect")).installed, false);
+  await restartHost(false);
+  assert.equal(await readFile(env.OMC_OPENCODE_CONFIG_PATH, "utf8"), original);
+  evidence.checks.push(
+    "post-upgrade-disconnect-reconnect-recovery-with-explicit-restarts",
   );
   evidence.passed = true;
 } finally {

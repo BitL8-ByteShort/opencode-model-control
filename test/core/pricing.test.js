@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   analyzeRates,
   classifyPricingEvidence,
+  normalizeApiIdentity,
   normalizeModelsDev,
   resolveModelEvidence,
 } from "../../src/core/pricing.js";
@@ -28,6 +29,105 @@ const evidence = (cost, extra) =>
     live,
     normalizeModelsDev(raw(cost, extra), { fetchedAt: at }),
   );
+test("raw absent, null, and empty URLs are unspecified SDK defaults; malformed and cached invalid stay invalid", () => {
+  const cases = [
+    [{}, true],
+    [{ url: undefined }, true],
+    [{ url: null }, true],
+    [{ url: "" }, true],
+    [{ url: "https://api.x.ai/v1" }, true],
+    [{ url: "https://gateway.example/v1" }, true],
+    [{ url: "not a url" }, false],
+    [{ url: "   " }, false],
+    [{ url: "https://user:secret@api.example/v1" }, false],
+    [{ url: "https://api.example/v1?key=secret" }, false],
+    [{ url: null, urlValid: false }, false],
+    [{ url: "", urlValid: false }, false],
+  ];
+  for (const [value, urlValid] of cases) {
+    assert.equal(
+      normalizeApiIdentity(value).urlValid,
+      urlValid,
+      JSON.stringify(value),
+    );
+  }
+  assert.equal(normalizeApiIdentity({ url: "" }).url, null);
+  assert.equal(
+    normalizeApiIdentity({ url: null, urlValid: false }).urlValid,
+    false,
+  );
+});
+
+test("xai/grok-4.6 empty SDK default and unfamiliar nested IDs match unspecified public endpoints", () => {
+  const at = "2026-09-08T12:00:00.000Z";
+  for (const [id, npm, cost] of [
+    ["xai/grok-4.6", "@ai-sdk/xai", { input: 3, output: 15 }],
+    ["unfamiliar/nested/spark-1.3", "@ai-sdk/openai-compatible", { input: 0, output: 0 }],
+  ]) {
+    const [provider, ...parts] = id.split("/");
+    const key = parts.join("/");
+    const snapshot = normalizeModelsDev(
+      {
+        [provider]: {
+          id: provider,
+          npm,
+          models: { [key]: { id: key, cost } },
+        },
+      },
+      { fetchedAt: at },
+    );
+    const record = snapshot.models[id];
+    assert.equal(record.api.url, null);
+    assert.equal(record.api.urlValid, true);
+    const live = {
+      id,
+      api: { id: key, npm, url: "" },
+    };
+    const evidence = resolveModelEvidence(live, snapshot);
+    assert.equal(evidence.class, cost.input || cost.output ? "paid" : "free", id);
+    assert.equal(evidence.reasons.includes("identity-conflict"), false, id);
+  }
+});
+
+test("missing public URL does not certify a custom endpoint, and identity mismatch stays distinct from zero rates", () => {
+  const at = "2026-09-08T12:00:00.000Z";
+  const snapshot = normalizeModelsDev(
+    {
+      xai: {
+        id: "xai",
+        npm: "@ai-sdk/xai",
+        models: { "grok-4.6": { id: "grok-4.6", cost: { input: 3, output: 15 } } },
+      },
+    },
+    { fetchedAt: at },
+  );
+  const custom = resolveModelEvidence(
+    {
+      id: "xai/grok-4.6",
+      api: {
+        id: "grok-4.6",
+        npm: "@ai-sdk/xai",
+        url: "https://gateway.example/v1",
+      },
+    },
+    snapshot,
+  );
+  assert.equal(custom.class, "unknown");
+  assert.ok(
+    custom.reasons.includes("identity-conflict") ||
+      custom.reasons.includes("public-price-route-mismatch"),
+  );
+  const zero = resolveModelEvidence(
+    {
+      id: "xai/grok-4.6",
+      api: { id: "grok-4.6", npm: "@ai-sdk/xai", url: "" },
+    },
+    snapshot,
+  );
+  assert.notEqual(zero.class, "unknown");
+  assert.equal(zero.rates.input, 3);
+});
+
 test("raw absent, malformed and CLI normalized zeros cannot authorize free", () => {
   for (const cost of [
     undefined,

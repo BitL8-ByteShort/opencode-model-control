@@ -28,7 +28,7 @@ test("legacy migration is persisted atomically with an exact private backup", as
     path,
     migrate: (v) => migrateSettings(v, loadModelCatalog()),
   });
-  assert.equal(JSON.parse(await readFile(path, "utf8")).schemaVersion, 3);
+  assert.equal(JSON.parse(await readFile(path, "utf8")).schemaVersion, 4);
   const backups = (await readdir(directory)).filter((name) =>
     name.includes("backup"),
   );

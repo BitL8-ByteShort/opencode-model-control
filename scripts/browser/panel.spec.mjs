@@ -8,6 +8,7 @@ import {
   capabilityDetailsSchema,
   pricingSchema,
 } from "../../src/core/catalog-evidence.js";
+let usageFixture = null;
 const token = randomBytes(32).toString("base64url");
 const clone = structuredClone;
 const capabilities = {
@@ -78,9 +79,11 @@ const model = (id, pricingClass = "free") => ({
 });
 function initial() {
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     settingsRevision: "s1",
     catalogRevision: "c1",
+    connectionRevision: "conn1",
+    connections: ["fixture", "other"].map(providerId => ({id: `private-${providerId}`, providerId, bindingRevision: "binding1", authKind: "api-key", billing: {kind: "unknown", source: "unknown", observedAt: null}, transportVisibility: "host-managed", inventoryObservedAt: "2026-09-08T12:00:00Z", entitlement: "not-reported", quota: null})),
     blockedRoles: {},
     catalog: [
       model("fixture/Alpha"),
@@ -88,9 +91,10 @@ function initial() {
       { ...model("fixture/Blocked", "unknown"), available: false },
     ],
     settings: {
-      schemaVersion: 3,
+      schemaVersion: 4,
       costPolicy: "free-only",
       costPreference: "free-first",
+      paidEligibility: "verified-pricing",
       autoIncludeNewModels: true,
       makeRouterDefault: true,
       maxDelegationDepth: 1,
@@ -208,12 +212,12 @@ test.beforeAll(async () => {
           },
           409,
         );
-      if (input.settings?.schemaVersion !== 3)
+      if (input.settings?.schemaVersion !== 4)
         return send(
           {
             error: {
               code: "INVALID_SETTINGS",
-              message: "Canonical settings v3 required.",
+              message: "Canonical settings v4 required.",
             },
           },
           400,
@@ -252,7 +256,7 @@ test.beforeAll(async () => {
       return send({ roles: [], caveats: [], status: "unverified" });
     if (path === "/api/runtime-qualification")
       return send({ results: [], boundaries: [], running: false });
-    if (path === "/api/usage") return send(null);
+    if (path === "/api/usage") return send(usageFixture);
     return send({ error: { message: "Unexpected fixture API action" } }, 404);
   };
   if (process.env.OMC_PACKAGE_ROOT) {
@@ -337,6 +341,7 @@ test.afterAll(async () => {
 });
 test.beforeEach(async () => {
   state = initial();
+  usageFixture = null;
   requests = [];
   refreshGate = saveGate = getGate = null;
   saveStarted = null;
@@ -441,7 +446,7 @@ test("policy enrollment, blocked off switch and pins remain explicit across Free
   await expect(
     page.getByRole("combobox", { name: "Reviewer", exact: false }),
   ).toHaveValue("fixture/Blocked");
-  await expect(blocked).toContainText("pricing");
+  await expect(blocked).toContainText("verified free");
   await enroll(page).uncheck();
   const alpha = row(page, "Alpha");
   await expect(alpha.getByRole("checkbox")).not.toBeChecked();
@@ -868,4 +873,58 @@ test("delayed stale-return observation cannot start refresh after a newer Save o
   expect(
     requests.filter((request) => request.path === "/api/catalog/refresh"),
   ).toEqual([]);
+});
+
+
+test("provider-independent billing declaration survives refresh, binds role, and saves baseline revision", async ({page}) => {
+  const errors = await open(page);
+  await page.getByRole("radio", {name: "Paid", exact: true}).click();
+  const declaration = page.getByRole("combobox", {name: "Declare billing for fixture", exact: true});
+  await declaration.focus();
+  await declaration.selectOption("subscription");
+  await expect(page.locator("#billing-connections")).toContainText("Declared by you");
+  refreshGate = gate();
+  await refresh(page).click();
+  state.catalog.push(model("fixture/Subscription model", "unknown"));
+  refreshGate.release();
+  await expect(declaration).toHaveValue("subscription");
+  await page.getByRole("combobox", {name:"Primary orchestrator",exact:true}).selectOption("fixture/Subscription model");
+  await save(page).click();
+  await expect(save(page)).toBeDisabled();
+  expect(saveStarted.expectedConnectionRevision).toBe("conn1");
+  expect(state.settings.billingDeclarations["private-fixture"]).toMatchObject({kind:"subscription",source:"user-declared",bindingRevision:"binding1"});
+  expect(state.settings.roleConnections.orchestrator).toEqual({connectionId:"private-fixture",bindingRevision:"binding1"});
+  state.connections[0].bindingRevision="binding2";
+  await refresh(page).click();
+  await expect(page.getByText(/Connection changed — previous declaration/)).toBeVisible();
+  await expect(page.getByRole("combobox",{name:"Primary orchestrator",exact:true})).toHaveValue("fixture/Subscription model");
+  await page.getByRole("button",{name:"Use current connection for Primary orchestrator",exact:true}).click();
+  await save(page).click();
+  await expect(save(page)).toBeDisabled();
+  expect(state.settings.roleConnections.orchestrator.bindingRevision).toBe("binding2");
+  await page.setViewportSize({width:390,height:844});
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  expect(await page.locator("body").innerText()).not.toContain("private-fixture");
+  expect(errors).toEqual([]);
+});
+
+test("historical captured billing separates currencies and unknown costs on mobile", async ({page}) => {
+  const tokens={input:0,output:null,reasoning:null,cacheRead:null,cacheWrite:null,total:null};
+  const observation={eventKey:"private-event",observedAt:"2026-09-08T12:00:00Z",connectionId:"old-private-slot",bindingRevision:"old-binding",billingKind:"subscription",billingSource:"user-declared",tokens,recordedCost:{amount:0,currency:"USD"},priceSnapshotId:null};
+  usageFixture={schemaVersion:2,source:"opencode-local-accounting",accounting:"opencode-recorded",window:"30d",windowDays:30,generatedAt:"2026-09-08T12:00:00Z",totals:{sessions:1,messages:3,costUsd:null,tokens},byModel:[],diagnostics:{modelsSeen:0,modelsReturned:0,modelsTruncated:false,unattributedMessages:0,zeroTokenMessages:0,earliestMessageAt:null,latestMessageAt:null},attributed:{observations:[observation,{...observation,eventKey:"other",recordedCost:{amount:2,currency:"EUR"}},{...observation,eventKey:"third",billingKind:"metered-api",bindingRevision:"new-binding",recordedCost:null}],coverage:{firstObservedAt:"2026-09-08T12:00:00Z",droppedCount:2,truncated:true,pendingCount:1,failedWriteCount:3,partial:true,lastFailureCode:"ATTRIBUTION_WRITE_FAILED"}},caveats:[]};
+  await open(page);
+  const captured=page.getByRole("region",{name:"Captured connection usage"});
+  await expect(captured).toContainText("Partial coverage");
+  await expect(captured.locator("article")).toHaveCount(3);
+  await expect(captured).toContainText("0 USD");
+  await expect(captured).toContainText("2 EUR");
+  await expect(captured).toContainText("Recorded cost: Not reported");
+  await expect(captured).toContainText("Output: Not reported");
+  await expect(captured).toContainText("Retention truncated");
+  await expect(captured).toContainText("Failed writes: 3");
+  await expect(captured).toContainText("Some captured usage could not be saved");
+  await page.setViewportSize({width:390,height:844});
+  await captured.scrollIntoViewIfNeeded();
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  expect(await page.locator("body").innerText()).not.toContain("old-private-slot");
 });

@@ -16,7 +16,14 @@ test("default settings are strict, bounded, complete, and deterministic", () => 
 
   assert.deepEqual(settings, createDefaultSettings(catalog));
   assert.equal(DEFAULT_SETTINGS.roleAssignments.orchestrator, "auto");
-  assert.equal(settings.schemaVersion, 3);
+  assert.equal(settings.schemaVersion, 4);
+  assert.equal(settings.paidEligibility, "verified-pricing");
+  assert.deepEqual(settings.roleConnections, {
+    orchestrator: null,
+    "code-worker": null,
+    "vision-worker": null,
+    reviewer: null,
+  });
   assert.equal(settings.costPreference, "free-first");
   assert.equal(settings.costPolicy, "free-only");
   assert.equal(Object.hasOwn(settings, "freeOnly"), false);
@@ -51,7 +58,8 @@ test("legacy settings migrate to schema v3 without enabling unselected models", 
     catalog,
   );
 
-  assert.equal(migrated.schemaVersion, 3);
+  assert.equal(migrated.schemaVersion, 4);
+  assert.equal(migrated.paidEligibility, "verified-pricing");
   assert.equal(migrated.costPreference, "free-first");
   assert.equal(migrated.costPolicy, "free-only");
   assert.equal(
@@ -83,7 +91,8 @@ test("schema v1 free-only settings migrate to explicit v3 cost controls", () => 
   delete legacy.costPolicy;
 
   const migrated = migrateSettings(legacy, catalog);
-  assert.equal(migrated.schemaVersion, 3);
+  assert.equal(migrated.schemaVersion, 4);
+  assert.equal(migrated.paidEligibility, "verified-pricing");
   assert.equal(migrated.costPreference, "free-first");
   assert.equal(migrated.costPolicy, "free-only");
 });

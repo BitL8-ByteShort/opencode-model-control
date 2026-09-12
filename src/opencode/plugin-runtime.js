@@ -1,3 +1,6 @@
+import { capturePriceSnapshot } from "../core/usage-accounting.js";
+import { createAttributionQueue } from "../server/attribution-queue.js";
+import { setAttributionDiagnostics, persistAttributionDiagnostics } from "../server/usage-attribution-store.js";
 import {
   AUTO_ASSIGNMENT,
   eligibleModelsForRole,
@@ -9,6 +12,7 @@ import { resolveSettingsPath } from "../server/settings-store.js";
 import { readControlSnapshot } from "../server/state-snapshot.js";
 import { normalizeApiIdentity } from "../core/pricing.js";
 import { classifyRouteRequest } from "../server/task-classifier.js";
+import { observeConnections } from "./connection-observer.js";
 
 const ROUTER_AGENT = "omc-router";
 const MEDIA_MODALITIES = Object.freeze(["image", "audio", "video", "pdf"]);
@@ -264,13 +268,22 @@ function positiveRate(value) {
         typeof value === "object" &&
         Object.values(value).some(positiveRate);
 }
-function optionsMatch(options, api, depth = 0) {
+function optionsMatch(options, api, depth = 0, allowOpaqueFetch = false) {
   if (!options || typeof options !== "object") return true;
   if (depth > 12) return false;
   for (const [key, value] of Object.entries(options)) {
     if (/^(headers|apiKey|token|accessToken|credentials|timeout)$/i.test(key))
       continue;
-    if (/^(fetch|dispatcher|proxy|proxyUrl)$/i.test(key)) return false;
+    if (/^(fetch|dispatcher|proxy|proxyUrl)$/i.test(key)) {
+      if (
+        allowOpaqueFetch &&
+        depth === 0 &&
+        /^fetch$/i.test(key) &&
+        typeof value === "function"
+      )
+        continue;
+      return false;
+    }
     if (/^(baseURL|baseUrl|url|endpoint|apiEndpoint)$/i.test(key)) {
       const normalized = normalizeApiIdentity({ ...api, url: value });
       if (
@@ -294,11 +307,75 @@ function optionsMatch(options, api, depth = 0) {
   return true;
 }
 
+function applyLiveConnections(current, host) {
+  if (!current.connectionScopeId || !Array.isArray(host?.providers)) return;
+  current.connections = observeConnections({
+    providers: host.providers,
+    previousConnections: current.connections,
+    scopeId: current.connectionScopeId,
+  });
+}
+
+async function completeAttribution({ settingsPath, sessionID, messageID, info, route, observedAt }) {
+  const {
+    attributionEventKey,
+    readOrCreateAttributionSalt,
+    upsertUsageObservation,
+  } = await import("../server/usage-attribution-store.js");
+  const salt = await readOrCreateAttributionSalt(settingsPath);
+  const tokens = info?.tokens ?? {};
+  await upsertUsageObservation({
+    settingsPath,
+    pending: false,
+    pendingEventKey: attributionEventKey(salt, sessionID, route.messageID),
+    observation: {
+      eventKey: attributionEventKey(salt, sessionID, messageID),
+      observedAt,
+      connectionId: route?.connectionId ?? null,
+      bindingRevision: route?.bindingRevision ?? null,
+      billingKind: route?.billingKind ?? "unknown",
+      billingSource: route?.billingSource ?? "unknown",
+      tokens: {
+        input: tokens.input ?? null,
+        output: tokens.output ?? null,
+        reasoning: tokens.reasoning ?? null,
+        cacheRead: tokens.cache?.read ?? null,
+        cacheWrite: tokens.cache?.write ?? null,
+      },
+      recordedCost:
+        typeof info?.cost === "number"
+          ? { amount: info.cost, currency: null }
+          : null,
+      priceSnapshot: route?.priceSnapshot ?? null,
+      priceSnapshotId: null,
+    },
+  });
+}
+
+async function captureAttribution({ settingsPath, sessionID, route }) {
+  const { attributionEventKey, readOrCreateAttributionSalt, upsertUsageObservation } = await import("../server/usage-attribution-store.js");
+  const salt = await readOrCreateAttributionSalt(settingsPath);
+  await upsertUsageObservation({ settingsPath, pending: true, observation: {
+    eventKey: attributionEventKey(salt, sessionID, route.messageID),
+    observedAt: route.observedAt,
+    connectionId: route.connectionId ?? null, bindingRevision: route.bindingRevision ?? null,
+    billingKind: route.billingKind ?? "unknown", billingSource: route.billingSource ?? "unknown",
+    tokens: {}, recordedCost: null, priceSnapshot: route.priceSnapshot ?? null, priceSnapshotId: null,
+  } });
+}
+
 export function createMediaRoutingHooks({
   loadPolicy = loadSavedRoutingPolicy,
   client,
   directory,
+  recordUsage = false,
+  settingsPath = resolveSettingsPath(),
 } = {}) {
+  const attributionQueue = createAttributionQueue({
+    onState: state => setAttributionDiagnostics(settingsPath, state),
+    persist: state => persistAttributionDiagnostics(settingsPath, state),
+  });
+  const queueAttribution = work => attributionQueue.enqueue(work);
   const routes = new Map();
   const readOnlySessions = new Set();
   const workflows = new Map();
@@ -326,6 +403,8 @@ export function createMediaRoutingHooks({
         parent: operation.parent,
         childID,
         id: childRoute.id,
+        connectionId: childRoute.connectionId ?? null,
+        bindingRevision: childRoute.bindingRevision ?? null,
         messageID: childRoute.messageID,
       };
       children.set(childID, assignment);
@@ -343,7 +422,12 @@ export function createMediaRoutingHooks({
     try {
       const value = await loadPolicy();
       const catalog = validateCatalog(value.catalog);
-      return { catalog, settings: migrateSettings(value.settings, catalog) };
+      return {
+        catalog,
+        settings: migrateSettings(value.settings, catalog),
+        connections: value.connections ?? [],
+        connectionScopeId: value.connectionScopeId,
+      };
     } catch {
       fail("OMC_MEDIA_POLICY_UNAVAILABLE");
     }
@@ -363,15 +447,27 @@ export function createMediaRoutingHooks({
           models.set(`${provider.id}/${id}`, model);
         }
       }
+      models.providers = result.data.providers;
       return models;
     } catch {
       fail("OMC_HOST_INVENTORY_UNAVAILABLE");
     }
   }
-  function select(current, host, requirements, retainedID) {
+  function connectionFor(current, modelId) {
+    const providerId = String(modelId ?? "").split("/")[0];
+    return (
+      current.connections?.find((item) => item.providerId === providerId) ?? null
+    );
+  }
+  function select(current, host, requirements, retained) {
+    const retainedID = typeof retained === "string" ? retained : retained?.id;
     const configured =
       retainedID ?? current.settings.roleAssignments[requirements.role];
-    const candidates = eligibleModelsForRole({ ...current, ...requirements });
+    const candidates = eligibleModelsForRole({
+      ...current,
+      ...requirements,
+      connections: current.connections,
+    });
     const selected =
       configured === AUTO_ASSIGNMENT
         ? candidates.find(
@@ -388,10 +484,29 @@ export function createMediaRoutingHooks({
       !hostSupports(host.get(selected.id), requirements)
     )
       fail("OMC_DISPATCH_IDENTITY_CONFLICT");
-    return selected;
+    const connection = connectionFor(current, selected.id);
+    const expected =
+      retained && typeof retained === "object"
+        ? retained
+        : current.settings.roleConnections?.[requirements.role];
+    if (expected?.connectionId) {
+      if (!connection) fail("OMC_DISPATCH_IDENTITY_CONFLICT");
+      if (
+        connection.id !== expected.connectionId ||
+        connection.bindingRevision !== expected.bindingRevision
+      )
+        fail("OMC_DISPATCH_IDENTITY_CONFLICT");
+    }
+    if (connection?.entitlement === "reported-revoked")
+      fail("OMC_DISPATCH_IDENTITY_CONFLICT");
+    return { ...selected, connection };
   }
   return {
     async event({ event }) {
+      if (event?.type === "server.instance.disposed") {
+        if (recordUsage) await attributionQueue.flush({ close: true });
+        return;
+      }
       if (event?.type === "message.updated") {
         const info = event.properties?.info,
           route = routes.get(info?.sessionID);
@@ -414,6 +529,17 @@ export function createMediaRoutingHooks({
             completeChild(operation, info.sessionID);
             background.delete(info.sessionID);
           }
+        }
+        // Every completed assistant step can be billable, including tool calls.
+        // Keep repair authorization above independent of asynchronous accounting.
+        if (recordUsage && route?.attribution && info?.role === "assistant" &&
+            info.agent === route.agent && info.parentID === route.messageID &&
+            info.time?.completed && typeof info.id === "string") {
+          const snapshot = { ...route.attribution };
+          const completedInfo = structuredClone(info);
+          const observedAt = new Date().toISOString();
+          queueAttribution(() => completeAttribution({ settingsPath,
+            sessionID: info.sessionID, messageID: info.id, info: completedInfo, route: snapshot, observedAt }));
         }
         return;
       }
@@ -468,11 +594,12 @@ export function createMediaRoutingHooks({
         };
         const current = await policy();
         const host = await inventory();
+        applyLiveConnections(current, host);
         const selected = select(
           current,
           host,
           requirements,
-          authorizedRepair?.id,
+          authorizedRepair,
         );
         output.message.model = modelReference(selected.id);
         delete output.message.variant;
@@ -492,6 +619,15 @@ export function createMediaRoutingHooks({
         routes.set(input.sessionID, {
           repair: authorizedRepair,
           id: selected.id,
+          connectionId:
+            selected.connection?.id ?? authorizedRepair?.connectionId ?? null,
+          bindingRevision:
+            selected.connection?.bindingRevision ??
+            authorizedRepair?.bindingRevision ??
+            null,
+          billingKind: selected.connection?.billing?.kind ?? "unknown",
+          billingSource: selected.connection?.billing?.source ?? "unknown",
+          priceSnapshotId: null,
           requirements,
           agent: output.message.agent,
           messageID: output.message.id,
@@ -600,10 +736,13 @@ export function createMediaRoutingHooks({
         fail("OMC_DISPATCH_ROUTE_MISSING");
       const current = await policy();
       const host = await inventory();
+      applyLiveConnections(current, host);
       if (
-        !eligibleModelsForRole({ ...current, ...route.requirements }).some(
-          (m) => m.id === route.id,
-        )
+        !eligibleModelsForRole({
+          ...current,
+          ...route.requirements,
+          connections: current.connections,
+        }).some((m) => m.id === route.id)
       )
         fail();
       const selected = select(
@@ -613,10 +752,18 @@ export function createMediaRoutingHooks({
         route.repair?.active &&
           route.repair.messageID === input.message.id &&
           route.repair.workflow === workflows.get(route.repair.parent)
-          ? route.repair.id
+          ? route.repair
           : undefined,
       );
       const actual = input.model;
+      if (
+        route.connectionId &&
+        route.bindingRevision &&
+        selected.connection &&
+        (selected.connection.id !== route.connectionId ||
+          selected.connection.bindingRevision !== route.bindingRevision)
+      )
+        fail("OMC_DISPATCH_IDENTITY_CONFLICT");
       if (
         (input.provider?.id ?? input.provider?.info?.id) !==
           actual?.providerID ||
@@ -624,7 +771,12 @@ export function createMediaRoutingHooks({
         `${actual?.providerID}/${actual?.id}` !== route.id ||
         !identityMatches(selected.api, actual?.api) ||
         !hostSupports(actual, route.requirements) ||
-        !optionsMatch(input.provider?.options, selected.api) ||
+        !optionsMatch(
+          input.provider?.options,
+          selected.api,
+          0,
+          current.settings.costPolicy === "known-cost",
+        ) ||
         !optionsMatch(actual?.options, selected.api) ||
         !optionsMatch(output?.options, selected.api)
       )
@@ -641,6 +793,20 @@ export function createMediaRoutingHooks({
         (selected.pricing.class === "free" && positiveRate(actual.cost))
       )
         fail("OMC_DISPATCH_PRICING_CONFLICT");
+      if (recordUsage) {
+        // Capture binding before dispatch; completion cannot inherit a later login.
+        route.attribution ??= Object.freeze({
+          messageID: route.messageID,
+          observedAt: new Date().toISOString(),
+          priceSnapshot: capturePriceSnapshot(selected.pricing),
+          connectionId: selected.connection?.id ?? route.connectionId ?? null,
+          bindingRevision: selected.connection?.bindingRevision ?? route.bindingRevision ?? null,
+          billingKind: selected.connection?.billing?.kind ?? "unknown",
+          billingSource: selected.connection?.billing?.source ?? "unknown",
+        });
+        const snapshot = { ...route.attribution };
+        queueAttribution(() => captureAttribution({ settingsPath, sessionID: input.sessionID, route: snapshot }));
+      }
     },
     async "permission.ask"(input, output) {
       if (readOnlySessions.has(input?.sessionID)) output.status = "deny";
@@ -709,10 +875,12 @@ export function createMediaRoutingHooks({
             current,
             await inventory(),
             { role: "code-worker", modalities: ["text"], access: "write" },
-            child.id,
+            child,
           );
           operation.repair = {
             id: child.id,
+            connectionId: child.connectionId ?? null,
+            bindingRevision: child.bindingRevision ?? null,
             parent: input.sessionID,
             workflow,
             active: true,
@@ -747,6 +915,14 @@ export function createMediaRoutingHooks({
         routes.get(childID)?.agent === operation.agent
       )
         operation.slash.completed = true;
+    },
+    // OpenCode 1.18.28 awaits plugin dispose() finalizers. Event listeners are
+    // fire-and-forget, so shutdown durability uses this lifecycle hook.
+    async dispose() {
+      if (recordUsage) return attributionQueue.flush({ close: true });
+    },
+    async flushAttribution(options) {
+      return attributionQueue.flush(options);
     },
   };
 }

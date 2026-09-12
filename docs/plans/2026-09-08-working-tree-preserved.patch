@@ -1,0 +1,82 @@
+diff --git a/src/core/pricing.js b/src/core/pricing.js
+index 7287e98..c4b862b 100644
+--- a/src/core/pricing.js
++++ b/src/core/pricing.js
+@@ -284,8 +284,20 @@ export function resolveModelEvidence(live, snapshot) {
+   const record = snapshot?.models?.[live.id];
+   if (!record) return unknownPricing("model-not-in-public-source");
+   const api = normalizeApiIdentity(live.api);
++  // Identity must match on provider/model id and npm adapter.
++  // For the endpoint URL: only treat as conflict if the public source
++  // (models.dev) declared a specific URL and the live one differs or is absent.
++  // Many providers in models.dev omit the api URL (null); a valid live URL
++  // from OpenCode should not be rejected in that case.
++  const publicUrl = record.api.url;
++  const liveUrl = api.url;
++  const urlConflict =
++    publicUrl != null &&
++    (liveUrl == null || liveUrl !== publicUrl);
+   const conflict =
+-    ["id", "npm", "url"].some((key) => api[key] !== record.api[key]) ||
++    api.id !== record.api.id ||
++    api.npm !== record.api.npm ||
++    urlConflict ||
+     !api.id ||
+     !api.npm ||
+     !api.urlValid ||
+diff --git a/src/server/opencode-cli.js b/src/server/opencode-cli.js
+index 54abdcf..4dcdfc9 100644
+--- a/src/server/opencode-cli.js
++++ b/src/server/opencode-cli.js
+@@ -417,23 +417,37 @@ export function mergeDiscoveredCatalog(
+           reasons: ["identity-or-rate-conflict"],
+         };
+     } else pricing = unknownPricing();
+-    // Compatibility only: complete positive CLI rates can establish reported
+-    // paid status when no independent source record contradicts them.
++    // Compatibility only: complete positive CLI rates can establish reported-paid
++    // when there is no independent source record, or when the public record
++    // could not be used due to an identity conflict (e.g. models.dev omitted
++    // the api URL but OpenCode reported a valid one + positive per-token costs).
++    // This lets newly-added or provider-specific paid models become usable
++    // without relaxing the "complete positive rates + urlValid" requirement.
++    // Clean (non-conflicting) public evidence from models.dev is still preferred.
++    const publicHasRecord = !!(publicMetadata && publicMetadata.models?.[id]);
++    const conflictedWithPublic = pricing?.reasons?.includes("identity-conflict");
+     if (
+-      (!publicMetadata || !publicMetadata.models?.[id]) &&
+-      pricing.source !== "https://models.dev/api.json" &&
+       reported.class === "paid" &&
+-      api.urlValid
++      api.urlValid &&
++      (!publicHasRecord || conflictedWithPublic)
+     ) {
+-      pricing = {
+-        ...reported,
+-        source: "reported-paid",
+-        digest: null,
+-        fetchedAt: observedAt,
+-        expiresAt: new Date(
+-          Date.parse(observedAt) + PRICING_TTL_MS,
+-        ).toISOString(),
+-      };
++      // Only override if we do not already have a clean paid record from the
++      // independent public source.
++      if (
++        !pricing ||
++        pricing.class !== "paid" ||
++        pricing.source === "https://models.dev/api.json" && (pricing.reasons?.length ?? 0) > 0
++      ) {
++        pricing = {
++          ...reported,
++          source: "reported-paid",
++          digest: null,
++          fetchedAt: observedAt,
++          expiresAt: new Date(
++            Date.parse(observedAt) + PRICING_TTL_MS,
++          ).toISOString(),
++        };
++      }
+     }
+     const pricingClass = classifyPricingEvidence(pricing, { now });
+     // A fresh observation resolves the rejection only when its resulting

@@ -5,6 +5,7 @@ import {
   modelSupports,
   modelEnabled,
   eligibleModelsForRole,
+  resolveEligibility,
   assertExplicitAssignments,
   CATALOG_REFRESH_MS,
   planRoute,
@@ -24,6 +25,7 @@ import {
 import { classifyRouteRequest } from "./task-classifier.js";
 import { discoverOpenCode, mergeDiscoveredCatalog } from "./opencode-cli.js";
 import { readOpenCodeUsage } from "./opencode-usage.js";
+import { readUsageAttribution } from "./usage-attribution-store.js";
 import { runOpenCodeRuntimeQualification } from "./runtime-qualification.js";
 import {
   appendRuntimeQualificationResult,
@@ -37,6 +39,15 @@ import {
   settingsConflict,
 } from "./settings-store.js";
 import { readControlSnapshot, writeRefreshStatus } from "./state-snapshot.js";
+import {
+  readConnectionSnapshot,
+  writeConnectionSnapshot,
+} from "./connection-store.js";
+import {
+  observeConnections,
+  providersFromLiveModels,
+} from "../opencode/connection-observer.js";
+import { applyBillingDeclarations } from "../core/connections.js";
 import { acquireFileLock, withStateLock } from "./state-lock.js";
 import {
   readModelsDevCache,
@@ -96,21 +107,29 @@ function validateRuntimeQualificationRequest(input) {
   return input.modelId.trim();
 }
 
-function modelBlockReasons(model, settings) {
+function modelBlockReasons(model, settings, connections, role = null) {
   const reasons = [];
   if (!modelEnabled(settings, model.id)) reasons.push("disabled");
   if (!model.available || settings.modelControls[model.id]?.available === false)
     reasons.push("unavailable");
-  const pricing = classifyModelPricing(model);
-  if (pricing === "unknown") reasons.push("unknown-pricing");
-  else if (pricing === "paid" && settings.costPolicy === "free-only")
-    reasons.push("paid-blocked");
+  const providerId = model.id.slice(0, model.id.indexOf("/"));
+  const connection = Array.isArray(connections)
+    ? connections.find((item) => item.providerId === providerId) ?? null
+    : null;
+  const eligibility = resolveEligibility({
+    model,
+    settings,
+    connection,
+    connections,
+    role,
+  });
+  reasons.push(...eligibility.blockingReasons);
   return reasons;
 }
 
-function publicCatalog(catalog, settings) {
+function publicCatalog(catalog, settings, connections) {
   return catalog.models.map((model) => {
-    const blockedReasons = modelBlockReasons(model, settings);
+    const blockedReasons = modelBlockReasons(model, settings, connections);
     return {
       ...model,
       displayName: model.label,
@@ -129,7 +148,7 @@ function publicCatalog(catalog, settings) {
   });
 }
 
-function blockedRoles(catalog, settings) {
+function blockedRoles(catalog, settings, connections) {
   return Object.fromEntries(
     Object.entries(ROLE_REQUIREMENTS).map(([role, requirement]) => {
       const selected = settings.roleAssignments[role];
@@ -139,12 +158,13 @@ function blockedRoles(catalog, settings) {
         role,
         modalities: [...requirement.modalities],
         access: requirement.access,
+        connections,
       });
       if (selected === "auto")
         return [role, eligible.length ? [] : ["no-eligible-model"]];
       const model = catalog.models.find((m) => m.id === selected);
       if (!model) return [role, ["unavailable"]];
-      const reasons = modelBlockReasons(model, settings);
+      const reasons = modelBlockReasons(model, settings, connections, role);
       if (
         !modelSupports({
           model,
@@ -205,6 +225,7 @@ export class ControlService {
     this.runtimeQualificationRunner = runtimeQualificationRunner;
     this.baseCatalog = loadModelCatalog();
     this.catalog = unavailableCatalog(this.baseCatalog);
+    this.connections = [];
     this.hasLiveSnapshot = false;
     this.settings = createDefaultSettings(this.catalog);
     this.openCode = {
@@ -251,10 +272,15 @@ export class ControlService {
 
   getState() {
     return {
-      schemaVersion: 3,
+      schemaVersion: 4,
       settingsRevision: this.settingsRevision,
       catalogRevision: this.catalog.revision,
-      blockedRoles: blockedRoles(this.catalog, this.settings),
+      connectionRevision: this.connectionRevision,
+      blockedRoles: blockedRoles(
+        this.catalog,
+        this.settings,
+        this.connections,
+      ),
       system: {
         localOnly: true,
         freeOnly: this.settings.costPolicy === "free-only",
@@ -289,7 +315,8 @@ export class ControlService {
               .join(" ") || null,
         },
       },
-      catalog: publicCatalog(this.catalog, this.settings),
+      catalog: publicCatalog(this.catalog, this.settings, this.connections),
+      connections: this.connections,
       settings: this.settings,
     };
   }
@@ -378,6 +405,25 @@ export class ControlService {
         this.catalog = await writeCatalogSnapshot(merged, {
           path: this.catalogSnapshotPath,
         });
+        const previousConnections = await readConnectionSnapshot({
+          settingsPath: this.settingsPath,
+          locked: true,
+        });
+        const observedConnections = observeConnections({
+          providers: providersFromLiveModels(models),
+          previousConnections: previousConnections.connections,
+          scopeId: previousConnections.scopeId,
+          now: this.now(),
+        });
+        const retainedConnections = discovered.complete === true ? [] :
+          previousConnections.connections.filter(prior => !observedConnections.some(item => item.id === prior.id));
+        const savedConnections = await writeConnectionSnapshot({
+          settingsPath: this.settingsPath, locked: true,
+          snapshot: { schemaVersion: 1, scopeId: previousConnections.scopeId,
+            connections: [...observedConnections, ...retainedConnections] },
+        });
+        this.connections = applyBillingDeclarations(savedConnections.connections, this.settings.billingDeclarations);
+        this.connectionRevision = savedConnections.revision;
         const complete = discovered.complete === true;
         this.refreshState = {
           attemptedAt,
@@ -424,6 +470,8 @@ export class ControlService {
     });
     this.catalog = snapshot.catalog;
     this.settings = snapshot.settings;
+    this.connections = snapshot.connections ?? [];
+    this.connectionRevision = snapshot.connectionRevision;
     this.settingsRevision = snapshot.settingsRevision;
     this.refreshState = snapshot.refresh;
     this.hasLiveSnapshot = Boolean(snapshot.refresh);
@@ -438,7 +486,7 @@ export class ControlService {
 
   async updateSettings(
     input,
-    { expectedSettingsRevision, catalogRevision } = {},
+    { expectedSettingsRevision, catalogRevision, expectedConnectionRevision } = {},
   ) {
     if (typeof expectedSettingsRevision !== "string")
       throw settingsConflict("SETTINGS_REVISION_REQUIRED", [
@@ -455,13 +503,52 @@ export class ControlService {
         error.statusCode = 400;
         throw error;
       }
+      const changed = (a, b) => JSON.stringify(a ?? null) !== JSON.stringify(b ?? null);
+      const newlyPinnedRoles = Object.keys(settings.roleAssignments).filter(role =>
+        settings.roleAssignments[role] !== "auto" && settings.roleAssignments[role] !== this.settings.roleAssignments[role]);
+      const editedBindings = Object.keys(settings.roleConnections).filter(role =>
+        changed(settings.roleConnections[role], this.settings.roleConnections[role]));
+      const declarationIds = new Set([...Object.keys(settings.billingDeclarations), ...Object.keys(this.settings.billingDeclarations)]);
+      const editedDeclarations = [...declarationIds].filter(id =>
+        changed(settings.billingDeclarations[id], this.settings.billingDeclarations[id]));
+      if (editedBindings.length || editedDeclarations.length || newlyPinnedRoles.length) {
+        if (typeof expectedConnectionRevision !== "string")
+          throw settingsConflict("CONNECTION_REVISION_REQUIRED", ["Reload connection metadata before editing billing or connection assignments."]);
+        if (expectedConnectionRevision !== this.connectionRevision)
+          throw settingsConflict("CONNECTION_CONFLICT", ["Connections changed while you were editing. Review the latest connection details and retry; your draft is retained."]);
+        for (const role of new Set([...editedBindings, ...newlyPinnedRoles])) {
+          const binding = settings.roleConnections[role];
+          const modelId = settings.roleAssignments[role];
+          if (!binding && modelId === "auto") continue;
+          if (!binding)
+            throw settingsConflict("CONNECTION_CONFLICT", ["A new explicit model assignment requires its current connection binding. Review the connection before saving."]);
+          const connection = this.connections.find(item => item.id === binding.connectionId);
+          if (!connection || connection.bindingRevision !== binding.bindingRevision ||
+              modelId === "auto" || connection.providerId !== modelId.split("/")[0])
+            throw settingsConflict("CONNECTION_CONFLICT", ["The selected model and connection no longer match. Review the connection before saving."]);
+        }
+        for (const id of editedDeclarations) {
+          const declaration = settings.billingDeclarations[id];
+          if (!declaration) continue;
+          const connection = this.connections.find(item => item.id === id);
+          if (!connection || declaration.bindingRevision !== connection.bindingRevision ||
+              ["host", "provider-adapter"].includes(connection.billing.source))
+            throw settingsConflict("CONNECTION_CONFLICT", ["Billing can only be declared for the current connection when its billing is not reported by the host."]);
+        }
+      }
+      const effectiveConnections = applyBillingDeclarations(this.connections, settings.billingDeclarations);
       const editedRoles = Object.keys(settings.roleAssignments).filter(
         (role) =>
           settings.roleAssignments[role] !==
-          this.settings.roleAssignments[role],
+          this.settings.roleAssignments[role] || editedBindings.includes(role),
       );
       try {
-        assertExplicitAssignments(settings, this.catalog, editedRoles);
+        assertExplicitAssignments(
+          settings,
+          this.catalog,
+          editedRoles,
+          effectiveConnections,
+        );
         for (const [id, control] of Object.entries(settings.modelControls)) {
           if (
             control.selection !== "enabled" ||
@@ -469,7 +556,7 @@ export class ControlService {
           )
             continue;
           const model = this.catalog.models.find((model) => model.id === id);
-          if (!model || modelBlockReasons(model, settings).length)
+          if (!model || modelBlockReasons(model, settings, effectiveConnections).length)
             throw new Error(
               "The edited model selection is not currently eligible.",
             );
@@ -500,6 +587,7 @@ export class ControlService {
       task,
       catalog: this.catalog,
       settings: this.settings,
+      connections: this.connections,
     });
     const integrationWarning =
       input?.modality && input.modality !== "text"
@@ -511,6 +599,7 @@ export class ControlService {
       integrationWarning,
       settingsRevision: this.settingsRevision,
       catalogRevision: this.catalog.revision,
+      connectionRevision: this.connectionRevision,
     };
   }
 
@@ -527,7 +616,7 @@ export class ControlService {
       warnings: [
         "Connect manages only the model-control MCP, omc-* agents, its exact plugin array item, and an optional receipt-owned default_agent. Conflicting or user-owned values are never overwritten.",
         "The preview shows the requested default_agent entry. Connect omits it when OpenCode already has a user-owned default.",
-        "The bundled local plugin applies saved policy to every owned OMC role on its next request. Media-only turns stay read-only, and unavailable or unknown-cost routes fail closed.",
+        "The bundled local plugin applies saved policy to every owned OMC role on its next request. Media-only turns stay read-only. Free routing requires verified zero pricing; configured Paid routing requires an eligible host connection.",
       ],
     };
   }
@@ -618,7 +707,29 @@ export class ControlService {
   }
 
   async getUsage(window) {
-    return this.usageReader({ window });
+    const usage = await this.usageReader({ window });
+    try {
+      usage.attributed = await readUsageAttribution({
+        settingsPath: this.settingsPath,
+        from: window === "all" ? undefined : new Date(this.now() - ({"7d": 7, "30d": 30, "90d": 90}[window] ?? 30) * 86400000).toISOString(),
+        to: new Date(this.now()).toISOString(),
+        now: this.now(),
+      });
+    } catch {
+      usage.attributed = {
+        observations: [],
+        coverage: {
+          firstObservedAt: null,
+          droppedCount: 0,
+          truncated: true,
+          pendingCount: 0,
+          failedWriteCount: 0,
+          partial: true,
+          lastFailureCode: "ATTRIBUTION_READ_FAILED",
+        },
+      };
+    }
+    return usage;
   }
 
   async getOpenCodeIntegration() {

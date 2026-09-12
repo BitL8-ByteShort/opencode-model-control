@@ -25,7 +25,8 @@ test("v2 migration keeps explicit choices, paid preference and unavailable pins"
     },
   };
   const next = migrateSettings(old, catalog);
-  assert.equal(next.schemaVersion, 3);
+  assert.equal(next.schemaVersion, 4);
+  assert.equal(next.paidEligibility, "verified-pricing");
   assert.equal(next.autoIncludeNewModels, true);
   assert.equal(next.costPreference, "paid-first");
   assert.equal(next.roleAssignments.orchestrator, "missing/model");

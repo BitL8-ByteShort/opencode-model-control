@@ -28,6 +28,17 @@ export async function publicMetadataFetch() {
 }
 export const noPublicMetadataFetch = async () =>
   new Response("{}", { status: 503 });
+export const sdkDefaultEndpointShapes = Object.freeze({
+  absent: {},
+  nullUrl: { url: null },
+  emptyUrl: { url: "" },
+  explicitDefault: { url: "https://api.x.ai/v1" },
+  customGateway: { url: "https://gateway.example/v1" },
+  malformed: { url: "not a url" },
+  whitespace: { url: "   " },
+  cachedInvalid: { url: null, urlValid: false },
+});
+
 export function liveModel(id, extra = {}) {
   return {
     id,

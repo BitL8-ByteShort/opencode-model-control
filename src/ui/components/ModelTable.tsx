@@ -8,6 +8,9 @@ import type {
 } from "../types";
 import {
   catalogSummary,
+  billingLabel,
+  effectiveBilling,
+  evidenceSourceLabel,
   evidenceMeta,
   isModelAvailable,
   modelCostClass,
@@ -201,7 +204,9 @@ export function ModelTable({
               <th scope="col">Availability</th>
               <th scope="col">Evidence</th>
               <th scope="col">Inputs and roles</th>
-              <th scope="col">Cost</th>
+              <th scope="col">Connection</th>
+              <th scope="col">Access</th>
+              <th scope="col">Pricing</th>
               <th scope="col">Enabled</th>
             </tr>
           </thead>
@@ -252,13 +257,9 @@ export function ModelTable({
                   <td data-label="Availability">
                     <span className="inline-status">
                       <StatusDot tone={available ? "positive" : "negative"} />
-                      {available ? "Available" : "Unavailable"}
+                      {billingLabel(effectiveBilling(model.connection, settings)?.kind)} · {available ? "Available" : "Unavailable"}
                     </span>
-                    <p className="eligibility-reasons">
-                      {reasons.length
-                        ? reasons.join(" ")
-                        : "Eligible under draft policy"}
-                    </p>
+                    <small>{evidenceSourceLabel(effectiveBilling(model.connection, settings)?.source)}</small>
                   </td>
                   <td data-label="Evidence">
                     <span
@@ -296,7 +297,41 @@ export function ModelTable({
                       </p>
                     </details>
                   </td>
-                  <td data-label="Cost">
+                  <td data-label="Connection">
+                    <span className="inline-status">
+                      {model.provider ?? model.id.split("/")[0]} ·{" "}
+                      {billingLabel(effectiveBilling(model.connection, settings)?.kind)} · {available ? "Available" : "Unavailable"}
+                    </span>
+                    <small>{evidenceSourceLabel(effectiveBilling(model.connection, settings)?.source)}</small>
+                    <p className="eligibility-reasons">
+                      {model.api &&
+                      typeof model.api === "object" &&
+                      "urlValid" in model.api &&
+                      model.api.urlValid === false
+                        ? "Invalid endpoint"
+                        : model.pricing?.reasons?.includes(
+                            "public-price-route-mismatch",
+                          )
+                          ? "Public rates do not match this endpoint"
+                          : "Reported by OpenCode"}
+                    </p>
+                  </td>
+                  <td data-label="Access">
+                    <span className="inline-status">
+                      <StatusDot
+                        tone={reasons.length ? "negative" : "positive"}
+                      />
+                      {reasons.length
+                        ? reasons[0]
+                        : "Eligible under draft policy"}
+                    </span>
+                    {reasons.length > 1 ? (
+                      <p className="eligibility-reasons">
+                        {reasons.slice(1).join(" ")}
+                      </p>
+                    ) : null}
+                  </td>
+                  <td data-label="Pricing">
                     <span
                       className={
                         costClass === "free"
@@ -309,8 +344,12 @@ export function ModelTable({
                       {costClass === "free"
                         ? "Verified free"
                         : costClass === "paid"
-                          ? "Paid"
-                          : "Unknown — blocked"}
+                          ? "Paid rates"
+                          : settings.paidEligibility ===
+                              "configured-connections" &&
+                            settings.costPolicy === "known-cost"
+                            ? "API estimate unavailable"
+                            : "Cached rates expired or unknown"}
                     </span>
                     <details className="model-details">
                       <summary>Pricing evidence</summary>

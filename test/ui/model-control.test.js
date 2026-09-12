@@ -102,16 +102,19 @@ test("serializes the finalized settings contract without UI aliases", () => {
 
   assert.deepEqual(Object.keys(payload).sort(), [
     "autoIncludeNewModels",
+    "billingDeclarations",
     "costPolicy",
     "costPreference",
     "makeRouterDefault",
     "maxDelegationDepth",
     "maxFallbacksPerAssignment",
     "modelControls",
+    "paidEligibility",
     "roleAssignments",
+    "roleConnections",
     "schemaVersion",
   ]);
-  assert.equal(payload.schemaVersion, 3);
+  assert.equal(payload.schemaVersion, 4);
   assert.equal(payload.costPolicy, "free-only");
   assert.equal(payload.makeRouterDefault, true);
   assert.equal(payload.roleAssignments["vision-worker"], "opencode/mimo-v2.5-free");
@@ -259,7 +262,11 @@ test("role selection keeps cost, availability, capability, and automatic opt-in 
   const paidSettings = setCostMode(freeSettings, allModels, "paid");
 
   assert.equal(isRoleModelAssignable(paid, freeSettings, "code-worker"), false);
-  assert.equal(isRoleModelAssignable(unknown, paidSettings, "code-worker"), false);
+  assert.equal(isRoleModelAssignable(unknown, paidSettings, "code-worker"), true);
+  assert.equal(
+    isRoleModelAssignable(unknown, { ...paidSettings, paidEligibility: "verified-pricing" }, "code-worker"),
+    false,
+  );
   assert.equal(isRoleModelAssignable(unavailable, paidSettings, "code-worker"), false);
   assert.equal(isRoleModelAssignable(incompatible, paidSettings, "code-worker"), false);
 

@@ -4,6 +4,7 @@ import {
   COST_PREFERENCES,
   CURRENT_SETTINGS_VERSION,
   MODEL_ROLES,
+  PAID_ELIGIBILITY,
   ROLE_REQUIREMENTS,
 } from "./constants.js";
 import {
@@ -87,6 +88,74 @@ function defaultRoleAssignmentsForCatalog(catalog) {
   );
 }
 
+function emptyRoleConnections() {
+  return Object.fromEntries(MODEL_ROLES.map((role) => [role, null]));
+}
+
+function normalizeRoleConnections(value) {
+  if (value !== undefined && !isPlainObject(value))
+    invalidSettings("roleConnections must be an object.");
+  const supplied = value ?? {};
+  for (const role of Object.keys(supplied)) {
+    if (!MODEL_ROLES.includes(role))
+      invalidSettings("Settings contain an unknown role.");
+  }
+  return Object.fromEntries(
+    MODEL_ROLES.map((role) => {
+      const binding = Object.hasOwn(supplied, role) ? supplied[role] : null;
+      if (binding === null || binding === undefined) return [role, null];
+      if (
+        !isPlainObject(binding) ||
+        typeof binding.connectionId !== "string" ||
+        !/^[a-f0-9]{32}$/.test(binding.connectionId) ||
+        typeof binding.bindingRevision !== "string" ||
+        !/^[a-f0-9]{32}$/.test(binding.bindingRevision)
+      )
+        invalidSettings(`Role connection for ${role} is invalid.`);
+      return [
+        role,
+        {
+          connectionId: binding.connectionId,
+          bindingRevision: binding.bindingRevision,
+        },
+      ];
+    }),
+  );
+}
+
+function normalizeBillingDeclarations(value) {
+  if (value === undefined || value === null) return {};
+  if (!isPlainObject(value))
+    invalidSettings("billingDeclarations must be an object.");
+  return Object.fromEntries(
+    Object.entries(value).map(([connectionId, declaration]) => {
+      if (!/^[a-f0-9]{32}$/.test(connectionId))
+        invalidSettings("Billing declaration identity is invalid.");
+      if (
+        !isPlainObject(declaration) ||
+        !["subscription", "metered-api", "prepaid", "local", "free", "unknown"].includes(
+          declaration.kind,
+        ) ||
+        typeof declaration.bindingRevision !== "string" ||
+        !/^[a-f0-9]{32}$/.test(declaration.bindingRevision) ||
+        (declaration.declaredAt !== undefined &&
+          (typeof declaration.declaredAt !== "string" ||
+            !Number.isFinite(Date.parse(declaration.declaredAt))))
+      )
+        invalidSettings("Billing declaration is invalid.");
+      return [
+        connectionId,
+        {
+          kind: declaration.kind,
+          bindingRevision: declaration.bindingRevision,
+          source: "user-declared",
+          ...(declaration.declaredAt ? { declaredAt: declaration.declaredAt } : {}),
+        },
+      ];
+    }),
+  );
+}
+
 function normalizeRoleAssignments(value, catalog) {
   if (value !== undefined && !isPlainObject(value)) {
     invalidSettings("roleAssignments must be an object.");
@@ -124,6 +193,7 @@ export function assertExplicitAssignments(
   settings,
   catalog,
   roles = MODEL_ROLES,
+  connections,
 ) {
   for (const role of roles) {
     const modelId = settings.roleAssignments[role];
@@ -135,6 +205,7 @@ export function assertExplicitAssignments(
       role,
       modalities: [...requirement.modalities],
       access: requirement.access,
+      connections,
     });
     if (!eligible.some((model) => model.id === modelId)) {
       invalidSettings(
@@ -158,6 +229,9 @@ export function validateSettings(value, catalog = loadModelCatalog()) {
   }
   if (!COST_POLICIES.includes(value.costPolicy)) {
     invalidSettings("costPolicy is unsupported.");
+  }
+  if (!PAID_ELIGIBILITY.includes(value.paidEligibility)) {
+    invalidSettings("paidEligibility is unsupported.");
   }
   if (
     !Number.isInteger(value.maxDelegationDepth) ||
@@ -190,10 +264,13 @@ export function validateSettings(value, catalog = loadModelCatalog()) {
     autoIncludeNewModels: value.autoIncludeNewModels ?? true,
     costPreference: value.costPreference,
     costPolicy: value.costPolicy,
+    paidEligibility: value.paidEligibility,
     roleAssignments: normalizeRoleAssignments(
       value.roleAssignments,
       normalizedCatalog,
     ),
+    roleConnections: normalizeRoleConnections(value.roleConnections),
+    billingDeclarations: normalizeBillingDeclarations(value.billingDeclarations),
     maxDelegationDepth: value.maxDelegationDepth,
     maxFallbacksPerAssignment: value.maxFallbacksPerAssignment,
     makeRouterDefault: value.makeRouterDefault ?? true,
@@ -211,7 +288,10 @@ export function createDefaultSettings(catalog = loadModelCatalog()) {
     schemaVersion: CURRENT_SETTINGS_VERSION,
     costPreference: DEFAULT_COST_PREFERENCE,
     costPolicy: DEFAULT_COST_POLICY,
+    paidEligibility: "verified-pricing",
     roleAssignments: defaultRoleAssignmentsForCatalog(normalizedCatalog),
+    roleConnections: emptyRoleConnections(),
+    billingDeclarations: {},
     maxDelegationDepth: 1,
     maxFallbacksPerAssignment: 1,
     makeRouterDefault: true,
@@ -281,6 +361,9 @@ export function migrateSettings(value, catalog = loadModelCatalog()) {
   if (value.schemaVersion === CURRENT_SETTINGS_VERSION) {
     return validateSettings(value, normalizedCatalog);
   }
+  if (value.schemaVersion === 3) {
+    return validateSettings(upgradeV3ToV4(value), normalizedCatalog);
+  }
   if (
     value.schemaVersion !== undefined &&
     value.schemaVersion !== 0 &&
@@ -319,8 +402,8 @@ export function migrateSettings(value, catalog = loadModelCatalog()) {
     controls[id] = { ...controls[id], available: false };
 
   return validateSettings(
-    {
-      schemaVersion: CURRENT_SETTINGS_VERSION,
+    upgradeV3ToV4({
+      schemaVersion: 3,
       costPreference: value.costPreference ?? DEFAULT_COST_PREFERENCE,
       costPolicy: value.costPolicy ?? DEFAULT_COST_POLICY,
       autoIncludeNewModels: true,
@@ -338,9 +421,19 @@ export function migrateSettings(value, catalog = loadModelCatalog()) {
           ? value.makeRouterDefault
           : true,
       modelControls: controls,
-    },
+    }),
     normalizedCatalog,
   );
+}
+
+function upgradeV3ToV4(value) {
+  return {
+    ...value,
+    schemaVersion: CURRENT_SETTINGS_VERSION,
+    paidEligibility: "verified-pricing",
+    roleConnections: emptyRoleConnections(),
+    billingDeclarations: {},
+  };
 }
 
 export const DEFAULT_SETTINGS = deepFreeze(createDefaultSettings());

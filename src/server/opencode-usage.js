@@ -14,9 +14,11 @@ const MAX_MODEL_ROWS = 250;
 const PROVIDER_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/u;
 const MODEL_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:+/-]*$/u;
 const CAVEATS = Object.freeze([
-  "Token and cost values are recorded by OpenCode from provider responses; zero values may mean the provider did not report usage.",
-  "Recorded cost is not a provider bill.",
+  "Token counts are usage. OpenCode-recorded cost is not a provider bill or subscription charge.",
+  "Missing cost or token fields stay unreported instead of becoming zero.",
+  "Historical OpenCode totals are not classified by today's login or billing mode.",
   "Cache-read tokens are cumulative usage, not the current context size.",
+  "Plan quota is not reported unless a supported host adapter exposes it.",
 ]);
 
 function usageError(code, message, statusCode) {
@@ -64,30 +66,36 @@ export function usageSqlForWindow(input = DEFAULT_USAGE_WINDOW) {
       THEN json_extract(message.data, '$.modelID') END AS model_id,
     CASE WHEN json_type(message.data, '$.cost') IN ('integer', 'real')
       AND json_extract(message.data, '$.cost') >= 0
-      THEN json_extract(message.data, '$.cost') ELSE 0 END AS cost_usd,
+      THEN json_extract(message.data, '$.cost') END AS cost_usd,
     CASE WHEN json_type(message.data, '$.tokens.input') IN ('integer', 'real')
       AND json_extract(message.data, '$.tokens.input') >= 0
-      THEN json_extract(message.data, '$.tokens.input') ELSE 0 END AS tokens_input,
+      THEN json_extract(message.data, '$.tokens.input') END AS tokens_input,
     CASE WHEN json_type(message.data, '$.tokens.output') IN ('integer', 'real')
       AND json_extract(message.data, '$.tokens.output') >= 0
-      THEN json_extract(message.data, '$.tokens.output') ELSE 0 END AS tokens_output,
+      THEN json_extract(message.data, '$.tokens.output') END AS tokens_output,
     CASE WHEN json_type(message.data, '$.tokens.reasoning') IN ('integer', 'real')
       AND json_extract(message.data, '$.tokens.reasoning') >= 0
-      THEN json_extract(message.data, '$.tokens.reasoning') ELSE 0 END AS tokens_reasoning,
+      THEN json_extract(message.data, '$.tokens.reasoning') END AS tokens_reasoning,
     CASE WHEN json_type(message.data, '$.tokens.cache.read') IN ('integer', 'real')
       AND json_extract(message.data, '$.tokens.cache.read') >= 0
-      THEN json_extract(message.data, '$.tokens.cache.read') ELSE 0 END AS tokens_cache_read,
+      THEN json_extract(message.data, '$.tokens.cache.read') END AS tokens_cache_read,
     CASE WHEN json_type(message.data, '$.tokens.cache.write') IN ('integer', 'real')
       AND json_extract(message.data, '$.tokens.cache.write') >= 0
-      THEN json_extract(message.data, '$.tokens.cache.write') ELSE 0 END AS tokens_cache_write,
+      THEN json_extract(message.data, '$.tokens.cache.write') END AS tokens_cache_write,
     CASE WHEN
-      json_type(message.data, '$.cost') IN ('integer', 'real') AND json_extract(message.data, '$.cost') >= 0 AND
-      json_type(message.data, '$.tokens.input') IN ('integer', 'real') AND json_extract(message.data, '$.tokens.input') >= 0 AND
-      json_type(message.data, '$.tokens.output') IN ('integer', 'real') AND json_extract(message.data, '$.tokens.output') >= 0 AND
-      json_type(message.data, '$.tokens.reasoning') IN ('integer', 'real') AND json_extract(message.data, '$.tokens.reasoning') >= 0 AND
-      json_type(message.data, '$.tokens.cache.read') IN ('integer', 'real') AND json_extract(message.data, '$.tokens.cache.read') >= 0 AND
-      json_type(message.data, '$.tokens.cache.write') IN ('integer', 'real') AND json_extract(message.data, '$.tokens.cache.write') >= 0
-      THEN 0 ELSE 1 END AS invalid_accounting
+      (json_type(message.data, '$.cost') IS NOT NULL AND json_type(message.data, '$.cost') != 'null'
+        AND (json_type(message.data, '$.cost') NOT IN ('integer', 'real') OR json_extract(message.data, '$.cost') < 0))
+      OR (json_type(message.data, '$.tokens.input') IS NOT NULL AND json_type(message.data, '$.tokens.input') != 'null'
+        AND (json_type(message.data, '$.tokens.input') NOT IN ('integer', 'real') OR json_extract(message.data, '$.tokens.input') < 0))
+      OR (json_type(message.data, '$.tokens.output') IS NOT NULL AND json_type(message.data, '$.tokens.output') != 'null'
+        AND (json_type(message.data, '$.tokens.output') NOT IN ('integer', 'real') OR json_extract(message.data, '$.tokens.output') < 0))
+      OR (json_type(message.data, '$.tokens.reasoning') IS NOT NULL AND json_type(message.data, '$.tokens.reasoning') != 'null'
+        AND (json_type(message.data, '$.tokens.reasoning') NOT IN ('integer', 'real') OR json_extract(message.data, '$.tokens.reasoning') < 0))
+      OR (json_type(message.data, '$.tokens.cache.read') IS NOT NULL AND json_type(message.data, '$.tokens.cache.read') != 'null'
+        AND (json_type(message.data, '$.tokens.cache.read') NOT IN ('integer', 'real') OR json_extract(message.data, '$.tokens.cache.read') < 0))
+      OR (json_type(message.data, '$.tokens.cache.write') IS NOT NULL AND json_type(message.data, '$.tokens.cache.write') != 'null'
+        AND (json_type(message.data, '$.tokens.cache.write') NOT IN ('integer', 'real') OR json_extract(message.data, '$.tokens.cache.write') < 0))
+      THEN 1 ELSE 0 END AS invalid_accounting
   FROM message
   WHERE json_extract(message.data, '$.role') = 'assistant'
     AND ${windowFilter(window)}
@@ -97,15 +105,15 @@ export function usageSqlForWindow(input = DEFAULT_USAGE_WINDOW) {
     model_id,
     COUNT(DISTINCT session_id) AS sessions,
     COUNT(*) AS messages,
-    COALESCE(SUM(cost_usd), 0) AS cost_usd,
-    COALESCE(SUM(tokens_input), 0) AS tokens_input,
-    COALESCE(SUM(tokens_output), 0) AS tokens_output,
-    COALESCE(SUM(tokens_reasoning), 0) AS tokens_reasoning,
-    COALESCE(SUM(tokens_cache_read), 0) AS tokens_cache_read,
-    COALESCE(SUM(tokens_cache_write), 0) AS tokens_cache_write,
+    SUM(cost_usd) AS cost_usd,
+    SUM(tokens_input) AS tokens_input,
+    SUM(tokens_output) AS tokens_output,
+    SUM(tokens_reasoning) AS tokens_reasoning,
+    SUM(tokens_cache_read) AS tokens_cache_read,
+    SUM(tokens_cache_write) AS tokens_cache_write,
     MIN(time_created) AS earliest,
     MAX(time_created) AS latest,
-    SUM(CASE WHEN tokens_input + tokens_output + tokens_reasoning + tokens_cache_read + tokens_cache_write = 0 THEN 1 ELSE 0 END) AS zero_token_messages
+    SUM(CASE WHEN tokens_input IS NOT NULL AND tokens_output IS NOT NULL AND COALESCE(tokens_input, 0) + COALESCE(tokens_output, 0) + COALESCE(tokens_reasoning, 0) + COALESCE(tokens_cache_read, 0) + COALESCE(tokens_cache_write, 0) = 0 THEN 1 ELSE 0 END) AS zero_token_messages
   FROM filtered
   WHERE provider_id IS NOT NULL AND model_id IS NOT NULL
   GROUP BY provider_id, model_id
@@ -120,18 +128,18 @@ SELECT
   NULL AS model_id,
   COUNT(DISTINCT session_id) AS sessions,
   COUNT(*) AS messages,
-  COALESCE(SUM(cost_usd), 0) AS cost_usd,
-  COALESCE(SUM(tokens_input), 0) AS tokens_input,
-  COALESCE(SUM(tokens_output), 0) AS tokens_output,
-  COALESCE(SUM(tokens_reasoning), 0) AS tokens_reasoning,
-  COALESCE(SUM(tokens_cache_read), 0) AS tokens_cache_read,
-  COALESCE(SUM(tokens_cache_write), 0) AS tokens_cache_write,
+  SUM(cost_usd) AS cost_usd,
+  SUM(tokens_input) AS tokens_input,
+  SUM(tokens_output) AS tokens_output,
+  SUM(tokens_reasoning) AS tokens_reasoning,
+  SUM(tokens_cache_read) AS tokens_cache_read,
+  SUM(tokens_cache_write) AS tokens_cache_write,
   MIN(time_created) AS earliest,
   MAX(time_created) AS latest,
   COUNT(DISTINCT CASE WHEN provider_id IS NOT NULL AND model_id IS NOT NULL
     THEN provider_id || char(0) || model_id END) AS model_count,
   COALESCE(SUM(CASE WHEN provider_id IS NULL OR model_id IS NULL THEN 1 ELSE 0 END), 0) AS unattributed_messages,
-  COALESCE(SUM(CASE WHEN tokens_input + tokens_output + tokens_reasoning + tokens_cache_read + tokens_cache_write = 0 THEN 1 ELSE 0 END), 0) AS zero_token_messages,
+   COALESCE(SUM(CASE WHEN tokens_input IS NOT NULL AND tokens_output IS NOT NULL AND COALESCE(tokens_input, 0) + COALESCE(tokens_output, 0) + COALESCE(tokens_reasoning, 0) + COALESCE(tokens_cache_read, 0) + COALESCE(tokens_cache_write, 0) = 0 THEN 1 ELSE 0 END), 0) AS zero_token_messages,
   COALESCE(SUM(invalid_accounting), 0) AS invalid_accounting_messages
 FROM filtered
 UNION ALL
@@ -156,7 +164,11 @@ SELECT
 FROM model_usage`;
 }
 
-function finiteNumber(value, field, { integer = false } = {}) {
+function finiteNumber(value, field, { integer = false, optional = false } = {}) {
+  if (value === null || value === undefined) {
+    if (optional) return null;
+    throw usageError("OPENCODE_USAGE_INVALID", `OpenCode returned invalid ${field} usage.`, 502);
+  }
   if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
     throw usageError("OPENCODE_USAGE_INVALID", `OpenCode returned invalid ${field} usage.`, 502);
   }
@@ -178,14 +190,15 @@ function timestamp(value, field) {
 
 function tokenCounts(row) {
   const tokens = {
-    input: finiteNumber(row.tokens_input, "input token", { integer: true }),
-    output: finiteNumber(row.tokens_output, "output token", { integer: true }),
-    reasoning: finiteNumber(row.tokens_reasoning, "reasoning token", { integer: true }),
-    cacheRead: finiteNumber(row.tokens_cache_read, "cache-read token", { integer: true }),
-    cacheWrite: finiteNumber(row.tokens_cache_write, "cache-write token", { integer: true }),
+    input: finiteNumber(row.tokens_input, "input token", { integer: true, optional: true }),
+    output: finiteNumber(row.tokens_output, "output token", { integer: true, optional: true }),
+    reasoning: finiteNumber(row.tokens_reasoning, "reasoning token", { integer: true, optional: true }),
+    cacheRead: finiteNumber(row.tokens_cache_read, "cache-read token", { integer: true, optional: true }),
+    cacheWrite: finiteNumber(row.tokens_cache_write, "cache-write token", { integer: true, optional: true }),
   };
-  const total = Object.values(tokens).reduce((sum, value) => sum + value, 0);
-  if (!Number.isSafeInteger(total)) {
+  const present = Object.values(tokens).filter((value) => value !== null);
+  const total = present.length ? present.reduce((sum, value) => sum + value, 0) : null;
+  if (total !== null && !Number.isSafeInteger(total)) {
     throw usageError("OPENCODE_USAGE_INVALID", "OpenCode returned an unsafe token total.", 502);
   }
   return { ...tokens, total };
@@ -236,7 +249,7 @@ export function parseOpenCodeUsageRows(stdout, {
   const totals = {
     sessions: finiteNumber(summary.sessions, "session", { integer: true }),
     messages: finiteNumber(summary.messages, "message", { integer: true }),
-    costUsd: finiteNumber(summary.cost_usd, "cost"),
+    costUsd: finiteNumber(summary.cost_usd, "cost", { optional: true }),
     tokens: tokenCounts(summary),
   };
   const modelsSeen = finiteNumber(summary.model_count, "model", { integer: true });
@@ -255,7 +268,7 @@ export function parseOpenCodeUsageRows(stdout, {
       modelId,
       sessions: finiteNumber(row.sessions, "model session", { integer: true }),
       messages: finiteNumber(row.messages, "model message", { integer: true }),
-      costUsd: finiteNumber(row.cost_usd, "model cost"),
+      costUsd: finiteNumber(row.cost_usd, "model cost", { optional: true }),
       tokens: tokenCounts(row),
     };
   }).sort((left, right) => {
@@ -271,9 +284,10 @@ export function parseOpenCodeUsageRows(stdout, {
   }
 
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     source: "opencode-local-accounting",
-    accounting: "provider-reported",
+    accounting: "opencode-recorded",
+    costLabel: "OpenCode-recorded cost",
     window,
     windowDays: USAGE_WINDOWS[window],
     generatedAt: generated.toISOString(),
@@ -295,6 +309,15 @@ export function parseOpenCodeUsageRows(stdout, {
       ),
       earliestMessageAt: timestamp(summary.earliest, "earliest timestamp"),
       latestMessageAt: timestamp(summary.latest, "latest timestamp"),
+    },
+    quota: { status: "not-reported" },
+    attributed: {
+      observations: [],
+      coverage: {
+        firstObservedAt: null,
+        droppedCount: 0,
+        truncated: false,
+      },
     },
     caveats: [...CAVEATS],
   };

@@ -8,6 +8,9 @@ import {
   ROLE_DEFINITIONS,
   selectRoleModel,
   setCostMode,
+  adoptConfiguredPaid,
+  billingLabel,
+  effectiveBilling,
 } from "../model-control.js";
 import { Icon, Panel } from "./Primitives";
 
@@ -61,10 +64,23 @@ export function RoleAssignments({
           >Paid</button>
         </div>
         <label className="enrollment-control"><input type="checkbox" checked={settings.autoIncludeNewModels} onChange={event => onChange({...settings, autoIncludeNewModels: event.target.checked})} />Automatically include new models</label>
-        <small>{settings.autoIncludeNewModels ? "Policy-following models join automatically when eligible. In Paid mode, newly discovered known-paid models can be enrolled and incur charges. Explicit disables remain off." : "New policy-following models stay off until explicitly enabled. Returning a model to Policy uses this setting."}</small>
+        <small>{settings.autoIncludeNewModels ? "Policy-following models join automatically when eligible. In Paid mode, newly discovered configured paid models can be enrolled. Explicit disables remain off." : "New policy-following models stay off until explicitly enabled. Returning a model to Policy uses this setting."}</small>
         <small>{settings.costPolicy === "known-cost"
-          ? "Paid-first automatic routing is enabled. Provider charges may apply; unknown-cost models stay blocked."
+          ? settings.paidEligibility === "configured-connections"
+            ? "Allow configured paid connections, including subscriptions. Cost estimates may be unavailable."
+            : "Legacy Paid policy still requires verified prices. Save the new Paid option to allow configured connections."
           : "Only models with independently verified free pricing can be routed."}</small>
+        {settings.costPolicy === "known-cost" && settings.paidEligibility !== "configured-connections" ? (
+          <p className="inline-alert inline-alert--warning">
+            Paid used to require verified public prices. Save Paid again to allow configured connections, including subscriptions, when estimates are unavailable.
+            <button
+              type="button"
+              onClick={() => onChange(adoptConfiguredPaid(settings) as RouterSettings)}
+            >
+              Allow configured paid connections
+            </button>
+          </p>
+        ) : null}
       </fieldset>
       <div className="form-stack">
         {ROLE_DEFINITIONS.map((role) => (
@@ -88,11 +104,12 @@ export function RoleAssignments({
                     : eligible
                       ? ""
                       : " — enable on selection";
-                  return <option disabled={!assignable} key={model.id} value={model.id}>{modelDisplayName(model)}{suffix}</option>;
+                  return <option disabled={!assignable} key={model.id} value={model.id}>{modelDisplayName(model)} · {model.provider ?? "Configured slot"} · {billingLabel(effectiveBilling(model.connection, settings)?.kind)}{suffix}</option>;
                 })}
               </select>
             </span>
             {settings.roleAssignments[role.key] !== "auto" && modelEligibilityReasons(catalog.find(model => model.id === settings.roleAssignments[role.key]), settings, role.key).length > 0 ? <small className="inline-alert inline-alert--warning">Retained pin: {settings.roleAssignments[role.key]}. {modelEligibilityReasons(catalog.find(model => model.id === settings.roleAssignments[role.key]), settings, role.key).join(" ")} Choose Automatic or another model to replace it.</small> : null}
+            {settings.roleAssignments[role.key] !== "auto" && modelEligibilityReasons(catalog.find(model => model.id === settings.roleAssignments[role.key]), settings, role.key).some(reason => reason.includes("Connection changed") || reason.includes("Connection selection required")) ? <button type="button" onClick={() => updateRole(role.key, settings.roleAssignments[role.key]!)}>Use current connection for {role.label}</button> : null}
             <small className="field__hint" id={`${role.key}-hint`}>{selectHint(role.key)} Selecting a disabled model explicitly enables it for routing.</small>
           </label>
         ))}
@@ -120,7 +137,7 @@ export function RoleAssignments({
           <small className="field__hint">Allows one bounded return to the same code worker after a reviewer finds a concrete defect. It does not switch to another model.</small>
         </label>
       </div>
-      <div className={settings.costPolicy === "known-cost" ? "locked-setting locked-setting--warning" : "locked-setting"}><Icon name="lock" size={16} /><span><strong>{settings.costPolicy === "known-cost" ? "Known paid models allowed" : "Verified-free policy active"}</strong><small>Unknown or unverified pricing is always excluded from automatic routing.</small></span></div>
+      <div className={settings.costPolicy === "known-cost" ? "locked-setting locked-setting--warning" : "locked-setting"}><Icon name="lock" size={16} /><span><strong>{settings.costPolicy === "known-cost" ? (settings.paidEligibility === "configured-connections" ? "Configured paid connections allowed" : "Legacy verified-price Paid policy") : "Verified-free policy active"}</strong><small>{settings.costPolicy !== "known-cost" ? "Unknown or unverified pricing cannot authorize Free routing." : settings.paidEligibility === "configured-connections" ? "Missing estimates do not block a configured host route." : "Unknown public prices stay blocked until you adopt configured Paid access."}</small></span></div>
       {enabledModels.length === 0 ? <p className="inline-alert inline-alert--warning">No models are enabled yet. Select a compatible model above or enable one in Models.</p> : null}
     </Panel>
   );

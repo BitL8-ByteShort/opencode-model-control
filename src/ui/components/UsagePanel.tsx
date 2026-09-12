@@ -1,4 +1,6 @@
 import type { OpenCodeUsage, UsageWindow } from "../types";
+import { attributedUsageGroups, attributionCoverageWarning } from "../usage-view.js";
+import { billingLabel, evidenceSourceLabel } from "../model-control.js";
 import { Button, Icon, Panel } from "./Primitives";
 
 const windows: Array<{ label: string; value: UsageWindow }> = [
@@ -8,11 +10,8 @@ const windows: Array<{ label: string; value: UsageWindow }> = [
   { label: "All time", value: "all" },
 ];
 
-function formatCount(value: number) {
-  return new Intl.NumberFormat(undefined, { notation: value >= 100_000 ? "compact" : "standard", maximumFractionDigits: 1 }).format(value);
-}
-
-function formatCurrency(value: number) {
+function formatCurrency(value: number | null | undefined) {
+  if (value === null || value === undefined) return "Not reported";
   const maximumFractionDigits = value > 0 && value < 0.01 ? 4 : 2;
   return new Intl.NumberFormat(undefined, {
     style: "currency",
@@ -20,6 +19,11 @@ function formatCurrency(value: number) {
     minimumFractionDigits: 2,
     maximumFractionDigits,
   }).format(value);
+}
+
+function formatCount(value: number | null | undefined) {
+  if (value === null || value === undefined) return "Not reported";
+  return new Intl.NumberFormat(undefined, { notation: value >= 100_000 ? "compact" : "standard", maximumFractionDigits: 1 }).format(value);
 }
 
 function formatGeneratedAt(value?: string) {
@@ -61,7 +65,7 @@ export function UsagePanel({
         <div>
           <p className="section-kicker">Local OpenCode accounting</p>
           <h2>Usage</h2>
-          <p className="panel-description">Aggregate token and recorded-cost history from OpenCode. Prompts and credentials are never read.</p>
+          <p className="panel-description">Tokens are usage. OpenCode-recorded cost is not a provider bill or subscription charge. Prompts and credentials are never read.</p>
         </div>
         <Button disabled={loading} icon="refresh" onClick={onReload} tone="quiet">
           {loading ? "Refreshing…" : "Refresh usage"}
@@ -100,7 +104,7 @@ export function UsagePanel({
             <article><span>Sessions</span><strong>{formatCount(totals.sessions)}</strong></article>
             <article><span>Messages</span><strong>{formatCount(totals.messages)}</strong></article>
             <article><span>Total tokens</span><strong>{formatCount(totals.tokens.total)}</strong></article>
-            <article><span>Recorded cost</span><strong>{formatCurrency(totals.costUsd)}</strong></article>
+            <article><span>OpenCode-recorded cost</span><strong>{formatCurrency(totals.costUsd)}</strong></article>
           </div>
 
           <div className="usage-breakdown">
@@ -115,13 +119,26 @@ export function UsagePanel({
             <div className="usage-accounting-note">
               <Icon name="help" size={18} />
               <div>
-                <strong>Provider-reported accounting</strong>
-                <p>Recorded cost is an estimate stored by OpenCode, not a provider invoice. A zero can also mean the provider did not report usage.</p>
+                <strong>OpenCode-recorded accounting</strong>
+                <p>Recorded cost is stored by OpenCode, not a provider invoice. Missing values stay unreported. Quota: {usage.quota?.status === "not-reported" || !usage.quota ? "Not reported" : "Reported"}.</p>
                 <small>Updated {formatGeneratedAt(usage.generatedAt)}</small>
               </div>
             </div>
           </div>
 
+          <section className="attributed-usage" aria-label="Captured connection usage">
+            <h3>Captured connection usage</h3>
+            <p>Partial coverage: these captured records are a subset of historical accounting above. Groups retain the billing declaration and binding at capture, separately for each currency. They are not additional charges.</p>
+            <p>Capture began: {usage.attributed?.coverage.firstObservedAt ?? "Not reported"}. Dropped records: {usage.attributed?.coverage.droppedCount ?? "Not reported"}. {usage.attributed?.coverage.truncated ? "Retention truncated this window." : ""} Pending: {usage.attributed?.coverage.pendingCount ?? "Not reported"}; Failed writes: {usage.attributed?.coverage.failedWriteCount ?? "Not reported"}.</p>
+            {attributionCoverageWarning(usage.attributed?.coverage) ? <p role="status" className="inline-alert inline-alert--warning">{attributionCoverageWarning(usage.attributed?.coverage)}</p> : null}
+            {attributedUsageGroups(usage.attributed?.observations).map((group, index) => <article key={group.key}>
+              <h4>{group.connectionLabel} · capture group {index + 1}</h4>
+              <p>{billingLabel(group.billingKind)} · {evidenceSourceLabel(group.billingSource)} · {group.messages} captured messages</p>
+              <p>Recorded cost: {group.cost == null ? "Not reported" : `${group.cost.toLocaleString()} ${group.currency ?? "(currency not reported)"}`}. API estimate: unavailable. Provider charge: not reported. Quota: not reported.</p>
+              <p>Input: {formatCount(group.tokens.input)} · Output: {formatCount(group.tokens.output)} · Reasoning: {formatCount(group.tokens.reasoning)} · Cache read: {formatCount(group.tokens.cacheRead)} · Cache write: {formatCount(group.tokens.cacheWrite)}</p>
+            </article>)}
+            {!usage.attributed?.observations.length ? <p>No connection-attributed records in this window. Historical connection and billing: not reported.</p> : null}
+          </section>
           <div className="usage-models">
             <div className="usage-models__heading">
               <div>

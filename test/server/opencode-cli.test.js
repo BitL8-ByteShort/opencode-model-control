@@ -7,6 +7,10 @@ import {
   validateCatalog,
   validateSettings,
 } from "../../src/core/index.js";
+import {
+  classifyModelPricing,
+} from "../../src/core/catalog.js";
+import { normalizeModelsDev } from "../../src/core/pricing.js";
 import { buildOpenCodeConfig } from "../../src/opencode/index.js";
 import {
   discoverOpenCode,
@@ -353,6 +357,147 @@ test("catalog refresh restores bundled profiles from legacy capability-marked sn
     assert.equal(current.canOrchestrate, authored.canOrchestrate);
     assert.deepEqual(current.roles, authored.roles);
   }
+});
+
+test("empty SDK-default endpoint parses as unspecified and matches public rates", () => {
+  const observedAt = "2026-09-08T12:00:00.000Z";
+  const parsed = parseOpenCodeVerboseCatalog(
+    `xai/grok-4.6
+{
+  "name": "Grok 4.6",
+  "status": "active",
+  "api": { "id": "grok-4.6", "npm": "@ai-sdk/xai", "url": "" },
+  "cost": {"input": 3, "output": 15},
+  "limit": {"context": 200000},
+  "capabilities": {"toolcall": true, "input": {"text": true}, "output": {"text": true}}
+}`,
+    { observedAt },
+  );
+  assert.equal(parsed[0].api.url, null);
+  assert.equal(parsed[0].api.urlValid, true);
+  const publicMetadata = normalizeModelsDev(
+    {
+      xai: {
+        id: "xai",
+        npm: "@ai-sdk/xai",
+        models: { "grok-4.6": { id: "grok-4.6", cost: { input: 3, output: 15 } } },
+      },
+    },
+    { fetchedAt: observedAt },
+  );
+  const catalog = validateCatalog(
+    mergeDiscoveredCatalog(loadModelCatalog(), parsed, {
+      publicMetadata,
+      now: Date.parse(observedAt),
+    }),
+  );
+  const grok = catalog.models.find((model) => model.id === "xai/grok-4.6");
+  assert.equal(grok.api.urlValid, true);
+  assert.equal(grok.pricing.class, "paid");
+  assert.equal(grok.pricing.reasons.includes("identity-conflict"), false);
+  const restored = validateCatalog(JSON.parse(JSON.stringify(catalog)));
+  assert.equal(
+    restored.models.find((model) => model.id === "xai/grok-4.6").api.urlValid,
+    true,
+  );
+});
+
+test("custom gateway cannot inherit unspecified public rates or override mismatch with CLI cost", () => {
+  const observedAt = "2026-09-08T12:00:00.000Z";
+  const parsed = parseOpenCodeVerboseCatalog(
+    `xai/grok-4.6
+{
+  "name": "Grok 4.6",
+  "status": "active",
+  "api": { "id": "grok-4.6", "npm": "@ai-sdk/xai", "url": "https://gateway.example/v1" },
+  "cost": {"input": 3, "output": 15},
+  "limit": {"context": 200000},
+  "capabilities": {"toolcall": true, "input": {"text": true}, "output": {"text": true}}
+}`,
+    { observedAt },
+  );
+  const publicMetadata = normalizeModelsDev(
+    {
+      xai: {
+        id: "xai",
+        npm: "@ai-sdk/xai",
+        models: { "grok-4.6": { id: "grok-4.6", cost: { input: 3, output: 15 } } },
+      },
+    },
+    { fetchedAt: observedAt },
+  );
+  const catalog = validateCatalog(
+    mergeDiscoveredCatalog(loadModelCatalog(), parsed, {
+      publicMetadata,
+      now: Date.parse(observedAt),
+    }),
+  );
+  const grok = catalog.models.find((model) => model.id === "xai/grok-4.6");
+  assert.equal(grok.api.url, "https://gateway.example/v1");
+  assert.equal(grok.api.urlValid, true);
+  assert.equal(classifyModelPricing(grok, { now: Date.parse(observedAt) }), "unknown");
+  assert.notEqual(grok.pricing.source, "reported-paid");
+});
+
+test("cached invalid endpoint provenance stays invalid until a successful fresh unspecified discovery", () => {
+  const observedAt = "2026-09-08T12:00:00.000Z";
+  const invalid = parseOpenCodeVerboseCatalog(
+    `vendor/nested/spark
+{
+  "name": "Spark",
+  "status": "active",
+  "api": { "id": "nested/spark", "npm": "sdk", "url": "not a url" },
+  "cost": {"input": 0, "output": 0},
+  "limit": {"context": 100000},
+  "capabilities": {"toolcall": true, "input": {"text": true}, "output": {"text": true}}
+}`,
+    { observedAt },
+  );
+  assert.equal(invalid[0].api.urlValid, false);
+  const publicMetadata = normalizeModelsDev(
+    {
+      vendor: {
+        id: "vendor",
+        npm: "sdk",
+        models: { "nested/spark": { id: "nested/spark", cost: { input: 0, output: 0 } } },
+      },
+    },
+    { fetchedAt: observedAt },
+  );
+  const blocked = validateCatalog(
+    mergeDiscoveredCatalog(loadModelCatalog(), invalid, {
+      publicMetadata,
+      now: Date.parse(observedAt),
+    }),
+  );
+  const blockedModel = blocked.models.find((model) => model.id === "vendor/nested/spark");
+  assert.equal(blockedModel.api.urlValid, false);
+  const restored = validateCatalog(JSON.parse(JSON.stringify(blocked)));
+  assert.equal(
+    restored.models.find((model) => model.id === "vendor/nested/spark").api.urlValid,
+    false,
+  );
+  const recovered = parseOpenCodeVerboseCatalog(
+    `vendor/nested/spark
+{
+  "name": "Spark",
+  "status": "active",
+  "api": { "id": "nested/spark", "npm": "sdk", "url": "" },
+  "cost": {"input": 0, "output": 0},
+  "limit": {"context": 100000},
+  "capabilities": {"toolcall": true, "input": {"text": true}, "output": {"text": true}}
+}`,
+    { observedAt },
+  );
+  const fresh = validateCatalog(
+    mergeDiscoveredCatalog(restored, recovered, {
+      publicMetadata,
+      now: Date.parse(observedAt),
+    }),
+  );
+  const spark = fresh.models.find((model) => model.id === "vendor/nested/spark");
+  assert.equal(spark.api.urlValid, true);
+  assert.equal(classifyModelPricing(spark, { now: Date.parse(observedAt) }), "free");
 });
 
 test("parsed known-paid provider metadata reaches validated settings and generated config", () => {

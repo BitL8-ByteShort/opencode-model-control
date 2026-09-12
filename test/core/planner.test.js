@@ -373,6 +373,7 @@ test("automatic ranking applies cost preference before role score", () => {
     paid.id,
   );
   assert.deepEqual(paidFirst.policy, {
+    paidEligibility: "verified-pricing",
     freeOnly: false,
     costPreference: "paid-first",
     costPolicy: "known-cost",

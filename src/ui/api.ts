@@ -84,10 +84,10 @@ export function getState(signal?: AbortSignal): Promise<ModelControlState> {
   return requestJson<ModelControlState>("/api/state", { signal });
 }
 
-export function updateSettings(settings: RouterSettings, expectedSettingsRevision: string, catalogRevision: string): Promise<ModelControlState> {
+export function updateSettings(settings: RouterSettings, expectedSettingsRevision: string, catalogRevision: string, expectedConnectionRevision: string): Promise<ModelControlState> {
   return requestJson<ModelControlState>("/api/settings", {
     method: "PUT",
-    body: JSON.stringify({settings, expectedSettingsRevision, catalogRevision}),
+    body: JSON.stringify({settings, expectedSettingsRevision, catalogRevision, expectedConnectionRevision}),
   });
 }
 

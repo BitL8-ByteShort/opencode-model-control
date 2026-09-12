@@ -1,4 +1,5 @@
 import { classifyPricingEvidence, unknownPricing, normalizeApiIdentity, capabilityDetails, digestJson } from "./pricing.js";
+import { resolveEligibility } from "./eligibility.js";
 import { pricingSchema, capabilityDetailsSchema } from "./catalog-evidence.js";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -356,6 +357,7 @@ export function eligibleModelsForRole({
   role,
   modalities = ["text"],
   access = "read",
+  connections,
 }) {
   if (!MODEL_ROLES.includes(role)) {
     throw routerError("INVALID_ROLE", "The requested model role is unsupported.");
@@ -379,16 +381,19 @@ export function eligibleModelsForRole({
 
   return validateCatalog(catalog).models
     .filter((model) => {
-      const control = settings?.modelControls?.[model.id];
-      const pricingClass = classifyModelPricing(model);
-      return (
-        pricingClass !== "unknown" &&
-        (costPolicy === "known-cost" || pricingClass === "free") &&
-        model.available === true &&
-        modelEnabled(settings, model.id) &&
-        control?.available !== false &&
-        modelSupports({ model, role, modalities, access })
-      );
+      const providerId = model.id.slice(0, model.id.indexOf("/"));
+      const connection = Array.isArray(connections)
+        ? connections.find((item) => item.providerId === providerId) ?? null
+        : null;
+      return resolveEligibility({
+        model,
+        connection,
+        connections,
+        settings,
+        role,
+        modalities,
+        access,
+      }).allowed;
     })
     .sort((left, right) =>
       compareEligibleModels(left, right, role, costPreference),

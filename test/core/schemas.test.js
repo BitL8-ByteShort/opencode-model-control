@@ -5,6 +5,7 @@ import test from "node:test";
 const SCHEMA_FILES = [
   "model-catalog.schema.json",
   "router-settings.schema.json",
+  "connection-store.schema.json",
   "route-plan.schema.json",
   "sanitized-result.schema.json",
   "routing-cases.schema.json",
@@ -18,7 +19,8 @@ function readJson(relativePath) {
 
 test("benchmark contracts are strict versioned JSON Schemas", () => {
   const expectedVersions = new Map([
-    ["router-settings.schema.json", 3],
+    ["router-settings.schema.json", 4],
+    ["route-plan.schema.json", 2],
     ["model-catalog.schema.json", 2],
   ]);
   for (const file of SCHEMA_FILES) {
