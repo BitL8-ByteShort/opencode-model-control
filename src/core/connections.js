@@ -65,6 +65,7 @@ export function deriveBindingRevision(input) {
         authKind: input?.authKind ?? "unknown",
         billingKind: input?.billingKind ?? "unknown",
         mixed: input?.mixed === true,
+        ...(input?.mixed === true ? { modelRoutes: input?.modelRoutes ?? null } : {}),
       }),
     )
     .digest("hex")
@@ -207,10 +208,11 @@ export function applyBillingDeclarations(connections, declarations = {}) {
 }
 
 export function connectionBindingInputs(provider) {
-  const models = Object.values(provider?.models ?? {});
-  const identities = models.map((model) => normalizeApiIdentity(model?.api));
+  const modelEntries = Object.entries(provider?.models ?? {}).sort(([left], [right]) =>
+    left < right ? -1 : left > right ? 1 : 0);
+  const identities = modelEntries.map(([, model]) => normalizeApiIdentity(model?.api));
   const npms = [
-    ...new Set(identities.map((api) => api.npm).filter((value) => value)),
+    ...new Set(identities.map((api) => api.npm ?? null)),
   ].sort();
   const urls = [
     ...new Set(identities.map((api) => api.url).filter((value) => value !== undefined)),
@@ -220,6 +222,13 @@ export function connectionBindingInputs(provider) {
     npm: npms.length === 1 ? npms[0] : null,
     url: !mixed && urls.length <= 1 ? (urls[0] ?? null) : null,
     mixed,
+    // A mixed provider's endpoint set is insufficient: swapping two models'
+    // routes must invalidate saved pins too. Hash only normalized public API
+    // identity; model options and credentials never enter binding evidence.
+    // Homogeneous providers omit this digest so same-route discovery is stable.
+    modelRoutes: mixed ? createHash("sha256").update(JSON.stringify(
+      modelEntries.map(([key], index) => ({ model: key, ...identities[index] })),
+    )).digest("hex") : null,
     declared: identities.some((api) => api.urlValid && api.url !== null),
   };
 }

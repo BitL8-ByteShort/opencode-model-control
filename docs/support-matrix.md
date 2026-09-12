@@ -1,8 +1,12 @@
 # Support matrix
 
-This matrix describes implemented 0.3.0 behavior and dated compatibility evidence. Source verification, final installed-artifact acceptance, and public-channel verification are separate claims. See [Releasing](releasing.md) for the final-byte gates and the [release index](https://github.com/BitL8-ByteShort/opencode-model-control/releases) for published versions.
+This matrix describes implemented 0.4.0 behavior and dated compatibility evidence. Source verification, final installed-artifact acceptance, and public-channel verification are separate claims. See [Releasing](releasing.md) for the final-byte gates and the [release index](https://github.com/BitL8-ByteShort/opencode-model-control/releases) for published versions.
 
-## Platform and artifact evidence
+## 0.4.0 verification boundary
+
+The release targets the same Linux/macOS and Node 22.12.0/24.x matrix, with OpenCode 1.18.22 and 1.18.28. Candidate [CI run 34304377304](https://github.com/BitL8-ByteShort/opencode-model-control/actions/runs/34304377304) verified 20 host scenarios and 57 synthetic loopback requests per host, 14 production browser interactions, and actual 0.3.0 Free/Paid upgrades plus legacy 0.2.1 coverage under every OS/Node combination. This dated candidate result predates the final mixed-endpoint binding correction and is not final-byte evidence. Final and public-download evidence belongs with the immutable release assets after the release checklist passes; no additional platform claim is made here.
+
+## Historical 0.3.0 platform and artifact evidence
 
 Final [CI run 34146977662](https://github.com/BitL8-ByteShort/opencode-model-control/actions/runs/34146977662) passed all seven jobs on 2026-09-07 at source commit [`bcd228a349627523382dda65017bab6fb0a4856c`](https://github.com/BitL8-ByteShort/opencode-model-control/commit/bcd228a349627523382dda65017bab6fb0a4856c). The final 0.3.0 tarball was built once from that clean protected-main commit, and every installed-artifact job consumed the same bytes: SHA-256 `26a532b44c96d643c0543a78d2fef1ab2c1a3b83886e6715cef0ab683d3413ab`.
 
@@ -39,19 +43,19 @@ A clean version-pinned npm name install reported CLI 0.3.0 and all 74 package fi
 | --- | --- | --- |
 | All-provider discovery | Plugin-aware `opencode models --verbose`, no provider filter | `--pure` fallback is explicitly incomplete; preserve last usable records. OpenCode may normalize its own `$schema` line. |
 | Metadata refresh | Stale startup, every 15 minutes while active, or manual Update | Cross-process coalescing; separate attempted/successful timestamps; no inference or inferred settings/config writes. |
-| Pricing | Exact provider/model/API match; complete rates across every supported supplied billing dimension | With complete valid evidence, any positive rate means paid; exact-zero valid public evidence means free; malformed/conflicting/expired pricing is unknown and blocked. No free-name roster. |
+| Pricing | Exact provider/model/API match; complete rates across every supported supplied billing dimension | With complete valid evidence, any positive rate means paid; exact-zero valid public evidence means free; malformed/conflicting/expired pricing is unknown and cannot authorize Free or legacy verified-price Paid. Configured Paid uses eligible host connection evidence without requiring an estimate. No free-name roster. |
 | Pricing freshness | 24-hour expiry evaluated at routing time | Successful 200/304 renews public evidence; failed requests do not. Neither the source nor OMC guarantees future billing. |
 | Capabilities | Effective OpenCode report plus separate supplemental public report | Unknown differs from false; full modalities/tools/reasoning/options/structured-output/limits retained. Supplemental metadata cannot expand effective restrictions. |
-| Inclusion | Default-on auto-include follows saved Free/Paid policy | Explicit disables win. Saved Paid permits future eligible known-paid models; explicit enables cannot bypass hard gates. |
-| Saved intent | v3 policy/enabled/disabled controls; private legacy backups | Preserve absent pins, disables and Paid policy; revision-aware Save prevents lost updates; refresh/conflicts retain drafts. |
+| Inclusion | Default-on auto-include follows saved Free/Paid policy | Explicit disables win. Configured Paid permits future eligible configured models; explicit enables cannot bypass hard gates. |
+| Saved intent | v4 policy/enabled/disabled controls, billing declarations and role bindings; private legacy backups | Preserve absent pins, disables and Paid policy; revision-aware Save prevents lost updates; refresh/conflicts retain drafts. |
 | Live owned-role routing | Stable model-free agents, coherent saved state and pre-inference revalidation | Loaded A → B changes need no reconnect; explicit C absent from host inventory blocks until an explicit reload. No automatic disposal. |
 | Media handling | Tool-free vision analysis; explicit user-authored code intent may retain router | Classifier reads at most 4,000 user-text characters and attachment type/MIME only; no attachment payload/location inspection. |
 | Delegation and repair | Bounded worker → independent read-only reviewer → one authorized repair | Current runtime guards and exact completion evidence; synthesis remains model-guided; no restart-durable workflow claim. |
 | Owned slash summaries | Narrow exact-message one-shot grant after matching child completion | Changed parent pin blocks the stale inherited summary; no general synthetic-message bypass. |
-| Connect/Disconnect | Receipt-owned managed surface 2, exact MCP preflight, private backup, conflict refusal | Preserves unrelated JSONC/plugins/defaults; receipt is ownership evidence, not package authenticity. |
-| Usage | Fixed local aggregate query, 7/30/90-day or all-time windows | Recorded cost is an estimate, not an invoice; no prompt/content projection. |
+| Connect/Disconnect | Receipt-owned managed surface 3, exact MCP preflight, private backup, conflict refusal | Preserves unrelated JSONC/plugins/defaults; receipt is ownership evidence, not package authenticity. |
+| Usage | Fixed local aggregate query, 7/30/90-day or all-time windows | OpenCode-recorded cost is not an invoice. Captured records retain historical billing and binding, nullable token/cost fields and currency; no prompt/content projection. Quota and estimates remain unreported without evidence. |
 | Runtime access check | Explicitly acknowledged bounded synthetic OpenCode run | OpenCode may retry; can incur real costs/retention; never automatic or quality evidence. |
 | Ranking and benchmark qualification | Existing ranking and curated restrictions retained | No new winner, benchmark campaign, or quality promotion. |
 | Provider authentication integrations | Deferred | OpenCode retains credentials/authentication authority; no direct OpenRouter account/catalog integration. |
 
-“Free” does not imply private inference, unlimited use, entitlement, uptime, or perpetual pricing. Model names and availability can change. The running catalog and unexpired exact evidence govern eligibility, not a hardcoded list.
+“Free” does not imply private inference, unlimited use, entitlement, uptime, or perpetual pricing. Model names and availability can change. The running catalog, current connection evidence and saved policy govern eligibility. Free and legacy verified-price Paid additionally require unexpired exact pricing evidence; no hardcoded free-model list authorizes access.

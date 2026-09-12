@@ -194,3 +194,50 @@ test("quota observations reject invalid numbers and mixed provenance is not inve
   });
   assert.equal(snapshot.connections[0].quota, null);
 });
+
+test("mixed provider bindings retain each model's endpoint and SDK mapping", () => {
+  const api = (id, url, npm = "@ai-sdk/openai-compatible") => ({ id, url, npm });
+  const models = {
+    a: api("a", "https://subscription.invalid/v1"),
+    b: api("b", "https://other.invalid/v1"),
+  };
+  const observe = (value, previousConnections = []) => observeConnections({
+    scopeId, now, previousConnections, providers: [provider("gateway", value)],
+  });
+  const initial = observe(models);
+  initial[0].billing = { kind: "subscription", source: "user-declared", observedAt: new Date(now).toISOString() };
+  for (const changed of [
+    { ...models, a: api("a", "https://metered.invalid/v1") },
+    { a: api("a", models.b.url), b: api("b", models.a.url) },
+    { ...models, a: api("a", models.a.url, "@ai-sdk/openai") },
+    { ...models, c: api("c", models.a.url) },
+  ]) {
+    const result = observe(changed, initial);
+    assert.notEqual(result[0].bindingRevision, initial[0].bindingRevision);
+    assert.equal(result[0].billing.kind, "unknown");
+    assert.doesNotMatch(JSON.stringify(result), /subscription\.invalid|metered\.invalid|other\.invalid/);
+  }
+  assert.equal(observe({ b: models.b, a: models.a })[0].bindingRevision, initial[0].bindingRevision);
+
+  const mixedSDKs = { a: api("a", models.a.url, "@ai-sdk/openai"), b: api("b", models.a.url, "@ai-sdk/anthropic") };
+  const swappedSDKs = { a: api("a", models.a.url, "@ai-sdk/anthropic"), b: api("b", models.a.url, "@ai-sdk/openai") };
+  assert.notEqual(observe(mixedSDKs)[0].bindingRevision, observe(swappedSDKs)[0].bindingRevision);
+});
+
+test("homogeneous provider bindings remain stable when models share the same route", () => {
+  const a = { id: "a", npm: "@ai-sdk/openai-compatible", url: "https://same.invalid/v1" };
+  const observe = models => observeConnections({ scopeId, now, providers: [provider("gateway", models)] })[0].bindingRevision;
+  assert.equal(observe({ a }), observe({ b: { ...a, id: "b" }, a }));
+  assert.equal(observe({ a }), deriveBindingRevision({ npm: a.npm, url: a.url }));
+});
+
+test("quota is retained only while its observed connection binding is unchanged", () => {
+  const models = { a: { id: "a", npm: "@ai-sdk/openai", url: "https://first.invalid/v1" } };
+  const observe = (value, previousConnections = []) => observeConnections({ scopeId, now,
+    providers: [provider("gateway", value)], previousConnections });
+  const initial = observe(models);
+  initial[0].quota = { source: "host", unit: "requests", limit: 100, used: 10, remaining: 90,
+    resetsAt: null, observedAt: new Date(now).toISOString(), expiresAt: new Date(now + 60_000).toISOString() };
+  assert.deepEqual(observe(models, initial)[0].quota, initial[0].quota);
+  assert.equal(observe({ a: { ...models.a, url: "https://second.invalid/v1" } }, initial)[0].quota, null);
+});

@@ -118,3 +118,9 @@ Baseline: `26c4dd912aafa33a932a40fc4d0d9991d7e7b4fa`. Completed the four remaini
 - Local candidate SHA-256: `668d3b8ab17c35abdaf3e3069e8dba0b177c381257b01408262a0049707c565f`. Exact packaged acceptance is running separately; this is candidate evidence, not final-release bytes or a publication claim.
 
 The preexisting untracked Grok plan is preserved. Merge, final artifact creation, publication, and public verification remain separate release gates.
+
+## Final release review (2026-09-12)
+
+User authorized final review, protected-main merge, and publication. Independent review found mixed-endpoint providers could change a model endpoint or swap SDK mappings while retaining the old binding revision. The fix hashes sorted per-model normalized API identities for mixed providers and clears quota when a binding changes. Homogeneous same-route additions keep their old revision. Mixed-provider inventory changes conservatively require reviewing pins/declarations. Core and hook regressions proved the defect before the fix; a separate reviewer found no remaining blocker in the patch. README/integration/support documentation now distinguishes configured Paid access from price-gated policies and dates historical acceptance accurately.
+
+Local full verification passed on Node 24.14.0 with OpenCode 1.18.22 available. Fresh candidate CI and a separate final-mode protected-main artifact run are required before publication. Historical candidate digest/evidence above is not evidence for this changed source. No maintainer global installation or real-provider inference is used by release acceptance.

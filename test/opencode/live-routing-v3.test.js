@@ -7,6 +7,7 @@ import {
   validateCatalog,
 } from "../../src/core/index.js";
 import { deriveConnectionId } from "../../src/core/connections.js";
+import { observeConnections } from "../../src/opencode/connection-observer.js";
 import {
   createMediaRoutingHooks,
   resolveMediaWorker,
@@ -326,6 +327,65 @@ test("repair stops when the original connection binding switches billing", async
     ),
     { code: "OMC_DISPATCH_IDENTITY_CONFLICT" },
   );
+});
+
+function mixedConnectionFixture() {
+  const connectionScopeId = "11111111-1111-4111-8111-111111111111";
+  const connections = [];
+  const f = fixture({ connections, connectionScopeId });
+  f.settings.costPolicy = "known-cost";
+  f.settings.paidEligibility = "configured-connections";
+  const changeEndpoint = url => {
+    f.catalog.models.find(model => model.id === A).api.url = url;
+    f.host.find(model => `opencode/${model.id}` === A).api.url = url;
+  };
+  changeEndpoint("https://subscription.invalid/v1");
+  connections.push(...observeConnections({
+    scopeId: connectionScopeId,
+    providers: [{ id: "opencode", models: Object.fromEntries(f.host.map(model => [model.id, model])) }],
+  }));
+  return { ...f, connection: connections[0], changeEndpoint };
+}
+
+test("mixed-provider endpoint changes block saved pins and in-flight dispatch after catalog refresh", async () => {
+  const f = mixedConnectionFixture();
+  f.settings.roleAssignments["code-worker"] = A;
+  f.settings.roleConnections["code-worker"] = {
+    connectionId: f.connection.id, bindingRevision: f.connection.bindingRevision,
+  };
+  const output = await f.turn();
+  f.changeEndpoint("https://metered.invalid/v1");
+  await assert.rejects(f.dispatch(output), { code: "OMC_ROUTE_UNAVAILABLE" });
+  await assert.rejects(f.turn(), { code: "OMC_ROUTE_UNAVAILABLE" });
+});
+
+test("mixed-provider endpoint changes cannot move a retained repair to a new route", async () => {
+  const f = mixedConnectionFixture();
+  await f.turn("omc-router", "parent");
+  await f.hooks["tool.execute.before"](
+    { tool: "task", sessionID: "parent", callID: "work" },
+    { args: { subagent_type: "omc-code-worker" } },
+  );
+  await f.dispatch(await f.turn());
+  await f.hooks["tool.execute.after"](
+    { tool: "task", sessionID: "parent", callID: "work" },
+    { metadata: { sessionId: "child" } },
+  );
+  await f.hooks["tool.execute.before"](
+    { tool: "task", sessionID: "parent", callID: "review" },
+    { args: { subagent_type: "omc-reviewer" } },
+  );
+  await f.turn("omc-reviewer", "review");
+  await f.hooks["tool.execute.after"](
+    { tool: "task", sessionID: "parent", callID: "review" },
+    { metadata: { sessionId: "review" } },
+  );
+  await f.hooks["tool.execute.before"](
+    { tool: "task", sessionID: "parent", callID: "repair" },
+    { args: { subagent_type: "omc-code-worker", task_id: "child" } },
+  );
+  f.changeEndpoint("https://metered.invalid/v1");
+  await assert.rejects(f.turn(), { code: "OMC_DISPATCH_IDENTITY_CONFLICT" });
 });
 test("unrelated agents never load saved policy or host inventory", async () => {
   const hooks = createMediaRoutingHooks({

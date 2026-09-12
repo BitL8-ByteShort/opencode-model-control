@@ -12,6 +12,7 @@ All notable changes to OpenCode Model Control are recorded here. The project fol
 - Show configured connection billing declarations, evidence sources, exact role bindings, and separate captured usage by billing kind and currency. Connection edits require current revisions; drafts survive conflicts.
 - Reload connection evidence in planner and MCP routes. Bound attribution work and retention, preserve assistant-message history and price snapshots, and flush on host disposal.
 - Verify upgrades from the exact public 0.3.0 package under both Free and legacy Paid policy, including private backups and guarded update/recovery.
+- Bind mixed-endpoint providers to their per-model route mapping, including endpoint/SDK swaps. Changed connections invalidate pins and retained repairs and discard stale quota.
 - Managed integration surface version 3; an explicit Connect/update and OpenCode restart is required for plugin behavior changes.
 
 ## 0.3.0

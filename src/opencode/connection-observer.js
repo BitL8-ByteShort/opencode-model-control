@@ -70,6 +70,7 @@ export function observeConnections({
       authKind,
       billingKind,
       mixed: binding.mixed,
+      modelRoutes: binding.modelRoutes,
     });
     const billingUnchanged =
       prior &&
@@ -96,7 +97,7 @@ export function observeConnections({
           prior?.entitlement === "reported-revoked"
             ? "reported-revoked"
             : "not-reported",
-        quota: prior?.quota ?? null,
+        quota: prior?.bindingRevision === bindingRevision ? (prior.quota ?? null) : null,
       }),
     );
   }
