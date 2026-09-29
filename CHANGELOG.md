@@ -2,6 +2,14 @@
 
 All notable changes to OpenCode Model Control are recorded here. The project follows [Semantic Versioning](https://semver.org/).
 
+## 0.4.1
+
+- Keep zero token rates on plan-specific provider slots from authorizing Free access, including old saved catalogs and public metadata caches. Configured Paid access remains available without an API estimate.
+- Preserve availability for beta and enabled alpha models listed by OpenCode.
+- Keep unchanged connection billing and role bindings when incomplete discovery omits models within a provider. Fresh endpoint changes still invalidate bindings.
+- Accept nested and regional Usage model IDs containing `@` and `~`.
+- Update dependencies within their existing major versions and record the published 0.4.0 release evidence.
+
 ## 0.4.0
 
 - Treat empty SDK-default endpoints as unspecified rather than invalid, without letting a missing public URL certify a custom gateway.
