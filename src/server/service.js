@@ -409,8 +409,19 @@ export class ControlService {
           settingsPath: this.settingsPath,
           locked: true,
         });
+        // An incomplete provider inventory cannot establish removals. Include
+        // cached discovered identities for omitted models, while fresh records
+        // still replace their API identity and invalidate actual route changes.
+        const observedProviderIds = new Set(models.map(model => model.provider ?? model.id.split("/")[0]));
+        const observedModelIds = new Set(models.map(model => model.id));
+        const bindingModels = discovered.complete === true ? models : [
+          ...previousCatalog.models.filter(model => model.discovered === true &&
+            observedProviderIds.has(model.provider ?? model.id.split("/")[0]) &&
+            !observedModelIds.has(model.id)),
+          ...models,
+        ];
         const observedConnections = observeConnections({
-          providers: providersFromLiveModels(models),
+          providers: providersFromLiveModels(bindingModels),
           previousConnections: previousConnections.connections,
           scopeId: previousConnections.scopeId,
           now: this.now(),

@@ -125,6 +125,15 @@ test("usage parser returns bounded provider-reported totals and model attributio
   );
 });
 
+test("usage accepts the same nested and regional model identities as discovery", () => {
+  for (const id of ["@cf/qwen/qwen3-coder-30b-a3b-instruct", "claude-model@region", "~vendor/model-latest"]) {
+    const input = rows({ summary: { model_count: 1 }, models: [{ ...rows()[1], provider_id: "cloudflare-workers-ai", model_id: id }] });
+    const result = parseOpenCodeUsageRows(JSON.stringify(input));
+    assert.equal(result.byModel[0].id, `cloudflare-workers-ai/${id}`);
+    assert.equal(result.totals.tokens.total, 435);
+  }
+});
+
 test("missing cost stays unreported and explicit zero remains zero", () => {
   const missing = parseOpenCodeUsageRows(
     JSON.stringify(

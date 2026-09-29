@@ -8,7 +8,7 @@ The control panel runs on `127.0.0.1`. OpenCode remains responsible for provider
 
 The running app is authoritative for model names, availability, pricing evidence, and role eligibility.
 
-> This source documents **0.4.0**; `@latest` installs the version currently published on [npm](https://www.npmjs.com/package/opencode-model-control). Check the [release index](https://github.com/BitL8-ByteShort/opencode-model-control/releases) for availability and the [support matrix](docs/support-matrix.md) for verified compatibility.
+> This source documents **0.4.1**; `@latest` installs the version currently published on [npm](https://www.npmjs.com/package/opencode-model-control). Check the [release index](https://github.com/BitL8-ByteShort/opencode-model-control/releases) for availability and the [support matrix](docs/support-matrix.md) for verified compatibility.
 
 ## What it does
 
@@ -55,7 +55,7 @@ npm install --global opencode-model-control@latest
 opencode-model-control
 ```
 
-The first command installs the version tagged `latest` on npm and its runtime dependencies. Check `opencode-model-control --version` against the public release notes; an older published version may not include the 0.3.0 behavior described here. The second command starts the local panel and opens it in the default browser.
+The first command installs the version tagged `latest` on npm and its runtime dependencies. Check `opencode-model-control --version` against the public release notes; an older published version may not include the fixes described here. The second command starts the local panel and opens it in the default browser.
 
 Then:
 
@@ -108,11 +108,11 @@ The connector writes absolute Node and package CLI paths, so a source checkout d
 
 ### Direct GitHub release artifact
 
-The [GitHub release index](https://github.com/BitL8-ByteShort/opencode-model-control/releases) lists published versioned tarballs and checksums. Download the exact release asset, verify its SHA-256 against that release's checksum, then install the local file with `npm install --global /absolute/path/to/downloaded-package.tgz`. Historical package digests are recorded in the [historical package ledger](https://github.com/BitL8-ByteShort/opencode-model-control/blob/v0.2.1/packages/README.md). The [release checklist](docs/releasing.md) contains the maintainer-only 0.4.0 publication and verification procedure.
+The [GitHub release index](https://github.com/BitL8-ByteShort/opencode-model-control/releases) lists published versioned tarballs and checksums. Download the exact release asset, verify its SHA-256 against that release's checksum, then install the local file with `npm install --global /absolute/path/to/downloaded-package.tgz`. Package digests and release evidence are recorded in the [package ledger](packages/README.md). The [release checklist](docs/releasing.md) contains the maintainer publication and verification procedure.
 
-## What “Update available models” means (0.4.0)
+## What “Update available models” means (0.4.1)
 
-The button asks the installed OpenCode CLI for its effective model list with plugin-aware discovery and `--refresh`. This reflects OpenCode's resolved provider configuration, including its provider and model filters.
+The button asks the installed OpenCode CLI for its effective model list with plugin-aware discovery and `--refresh`. This reflects OpenCode's resolved provider configuration, including its provider and model filters. Listed beta and enabled alpha models stay available. An incomplete result preserves omitted model routes and unchanged connection bindings; a freshly observed endpoint change still invalidates saved bindings.
 
 Startup refreshes stale metadata before initialization completes; a live service checks every **15 minutes**, and **Update available models** can request an immediate refresh. A shared refresh lease coalesces panel/MCP processes; a recent persisted attempt prevents duplicate periodic work. OpenCode discovery and the independent public metadata fetch run concurrently. Failed or incomplete discovery retains the last usable model records; complete discovery can mark an absent model unavailable while preserving its identity and saved choices. The panel distinguishes last attempt, last successful discovery, and last successful pricing retrieval. A failed refresh cannot renew pricing freshness. Refresh does not invoke provider inference or rewrite OpenCode config; OpenCode itself may normalize its standard `$schema` field.
 
@@ -124,12 +124,14 @@ Catalog state is deliberately split into four concepts:
 
 - **Discovered:** OpenCode reported the model.
 - **Saved inclusion intent:** Policy, explicitly enabled, or explicitly disabled. Effective eligibility also requires current pricing, availability, and role capabilities.
-- **Available:** the refreshed metadata reports it active.
+- **Available:** OpenCode lists an active, beta, or enabled alpha model.
 - **Runtime access checked:** a manually confirmed bounded synthetic OpenCode run returned the expected sentinel. OpenCode may have retried a provider failure during that run. Refresh does not make this claim or incur a model charge, and a runtime-access pass is not benchmark evidence.
 
 ## Free-first, Paid-first, and pricing evidence
 
 Pricing is matched by the exact provider/full model key and API identity (model ID, npm adapter, and normalized endpoint). A similarly named model, a `-free` suffix, arbitrary CLI zeros, and bundled historical evidence cannot authorize free routing. Model Control fetches the fixed public `https://models.dev/api.json` endpoint without credentials; URLs inside metadata are never fetched. Complete, finite, nonnegative input/output rates are required. Every supported supplied billing dimension counts: reasoning, cache read/write, audio input/output, context tiers, legacy over-200k rates, and experimental modes. With complete valid evidence, any positive rate means paid; all supplied rates must be valid and exactly zero for free. Missing, malformed, unsupported, or conflicting pricing evidence is unknown. It cannot authorize Free or legacy verified-price Paid routing; configured Paid routing instead requires an eligible host connection. Complete positive CLI evidence can establish `reported-paid` when independent evidence does not contradict it; CLI zero cannot establish free.
+
+Zero token rates on identified plan-specific provider slots do not prove free access. These records remain Unknown for Free routing, including when loaded from old saved catalogs or public metadata caches. Provider names do not establish account billing, entitlement, authentication, or quota. Configured Paid access can still use an eligible host connection.
 
 Pricing evidence expires after **24 hours**, checked at route time even without another refresh. Successful HTTP 200 or cached 304 revalidation renews public-source freshness; a failed attempt does not. Cached evidence remains usable only until its existing expiry. Public-source digests and timestamps describe retrieved metadata, not a billing guarantee or model-quality score.
 
@@ -207,7 +209,7 @@ The isolation guard excludes user/project instructions, external plugins, MCP se
 
 ## Easy controls and Advanced tools
 
-The normal 0.3.0 setup path is **Update**, choose a cost preference and inclusion policy, decide whether Omc-Router should become the default agent, **Save**, **Connect**, and restart OpenCode. After setup, saved policy changes apply live within the host-loaded inventory. The default-agent option adds `default_agent: "omc-router"` only when OpenCode has no existing default. A user-owned default is preserved, and disabling the option removes only a value previously added by this installation.
+The normal setup path is **Update**, choose a cost preference and inclusion policy, decide whether Omc-Router should become the default agent, **Save**, **Connect**, and restart OpenCode. After setup, saved policy changes apply live within the host-loaded inventory. The default-agent option adds `default_agent: "omc-router"` only when OpenCode has no existing default. A user-owned default is preserved, and disabling the option removes only a value previously added by this installation.
 
 The collapsed **Advanced tools for developers** section is optional. It shows the exact managed config path, lets a developer open or reveal that existing file, and previews or exports generated integration JSON. It does not provide an unrestricted config writer. Manual changes to an owned entry make connection health report **Needs attention**, and Model Control will not overwrite the divergence.
 

@@ -1,5 +1,6 @@
 import { classifyPricingEvidence, unknownPricing, normalizeApiIdentity, capabilityDetails, digestJson } from "./pricing.js";
 import { resolveEligibility } from "./eligibility.js";
+import { guardPlanPricing } from "./access-policy.js";
 import { pricingSchema, capabilityDetailsSchema } from "./catalog-evidence.js";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -184,7 +185,7 @@ function normalizeModel(value) {
 
   let pricing, capabilities;
   try {
-    pricing = pricingSchema.parse(value.pricing ?? unknownPricing('legacy-no-source-freshness'));
+    pricing = pricingSchema.parse(guardPlanPricing(id, value.pricing ?? unknownPricing('legacy-no-source-freshness')));
     capabilities = capabilityDetailsSchema.parse(value.capabilities ?? {
       effective: capabilityDetails({}, 'legacy', null), supplemental: null,
     });
@@ -296,7 +297,7 @@ export function isVerifiedFree(model) {
 }
 
 export function classifyModelPricing(model, options) {
-  return classifyPricingEvidence(model?.pricing, options);
+  return classifyPricingEvidence(guardPlanPricing(model?.id, model?.pricing), options);
 }
 
 export function modelSupports({ model, role, modalities, access }) {

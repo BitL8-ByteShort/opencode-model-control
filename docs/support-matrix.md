@@ -1,10 +1,18 @@
 # Support matrix
 
-This matrix describes implemented 0.4.0 behavior and dated compatibility evidence. Source verification, final installed-artifact acceptance, and public-channel verification are separate claims. See [Releasing](releasing.md) for the final-byte gates and the [release index](https://github.com/BitL8-ByteShort/opencode-model-control/releases) for published versions.
+This matrix describes implemented 0.4.1 behavior and dated compatibility evidence. Source verification, final installed-artifact acceptance, and public-channel verification are separate claims. See [Releasing](releasing.md) for the final-byte gates and the [release index](https://github.com/BitL8-ByteShort/opencode-model-control/releases) for published versions.
 
-## 0.4.0 verification boundary
+## 0.4.1 verification boundary
 
-The release targets the same Linux/macOS and Node 22.12.0/24.x matrix, with OpenCode 1.18.22 and 1.18.28. Candidate [CI run 34304377304](https://github.com/BitL8-ByteShort/opencode-model-control/actions/runs/34304377304) verified 20 host scenarios and 57 synthetic loopback requests per host, 14 production browser interactions, and actual 0.3.0 Free/Paid upgrades plus legacy 0.2.1 coverage under every OS/Node combination. This dated candidate result predates the final mixed-endpoint binding correction and is not final-byte evidence. Final and public-download evidence belongs with the immutable release assets after the release checklist passes; no additional platform claim is made here.
+The release targets the same Linux/macOS and Node 22.12.0/24.x matrix, with OpenCode 1.18.22 and 1.18.28. Final artifact and public-download evidence belongs with the immutable release assets after the release checklist passes. Earlier releases do not establish acceptance for the new bytes.
+
+## Historical 0.4.0 platform and artifact evidence
+
+Final [CI run 34688784337](https://github.com/BitL8-ByteShort/opencode-model-control/actions/runs/34688784337) passed on 2026-09-12 at source commit [`942a94c5eb354da877b22ddc6eb37b098a598f7c`](https://github.com/BitL8-ByteShort/opencode-model-control/commit/942a94c5eb354da877b22ddc6eb37b098a598f7c). All four Linux x64/macOS arm64 and Node 22.12.0/24.20.0 jobs consumed one tarball, SHA-256 `1ee2d3ab864f2615ec3f8c750a400694ac8587129bdef78b0d1b275793f0828b`.
+
+Each installed-package run passed 18 package checks, both OpenCode hosts (20 scenarios and 57 synthetic loopback requests each), and 14 production browser scenarios with zero failures, skips, or flakes. The matrix covered current installation, 0.3.0 Free/Paid upgrades, legacy 0.2.1 upgrades, private exact migration backups, connection updates, MCP, restart and disconnect recovery. Real-provider inference requests were zero. The [immutable release](https://github.com/BitL8-ByteShort/opencode-model-control/releases/tag/v0.4.0) contains the [final acceptance evidence](https://github.com/BitL8-ByteShort/opencode-model-control/releases/download/v0.4.0/acceptance-evidence.zip).
+
+On 2026-09-12, the public npm download matched that SHA-256 and registry integrity. A clean version-pinned npm install matched all 83 package files, and the downloaded artifact passed the same package and browser checks on Linux/Node 24.14.0 with both hosts. See [public npm verification](https://github.com/BitL8-ByteShort/opencode-model-control/releases/download/v0.4.0/npm-public-verification.zip) and the [package ledger](../packages/README.md).
 
 ## Historical 0.3.0 platform and artifact evidence
 
@@ -41,9 +49,9 @@ A clean version-pinned npm name install reported CLI 0.3.0 and all 74 package fi
 
 | Surface | Contract | Boundary |
 | --- | --- | --- |
-| All-provider discovery | Plugin-aware `opencode models --verbose`, no provider filter | `--pure` fallback is explicitly incomplete; preserve last usable records. OpenCode may normalize its own `$schema` line. |
+| All-provider discovery | Plugin-aware `opencode models --verbose`, no provider filter | Host-listed beta and enabled alpha models remain available. Incomplete discovery preserves omitted routes and unchanged bindings; fresh endpoint changes invalidate bindings. OpenCode may normalize its own `$schema` line. |
 | Metadata refresh | Stale startup, every 15 minutes while active, or manual Update | Cross-process coalescing; separate attempted/successful timestamps; no inference or inferred settings/config writes. |
-| Pricing | Exact provider/model/API match; complete rates across every supported supplied billing dimension | With complete valid evidence, any positive rate means paid; exact-zero valid public evidence means free; malformed/conflicting/expired pricing is unknown and cannot authorize Free or legacy verified-price Paid. Configured Paid uses eligible host connection evidence without requiring an estimate. No free-name roster. |
+| Pricing | Exact provider/model/API match; complete rates across every supported supplied billing dimension | Positive rates mean paid. Zero rates on identified plan-specific slots remain unknown; other complete valid zero public rates can establish free pricing. Malformed/conflicting/expired pricing cannot authorize Free or legacy verified-price Paid. Configured Paid uses eligible host connection evidence without requiring an estimate. No free-name roster. |
 | Pricing freshness | 24-hour expiry evaluated at routing time | Successful 200/304 renews public evidence; failed requests do not. Neither the source nor OMC guarantees future billing. |
 | Capabilities | Effective OpenCode report plus separate supplemental public report | Unknown differs from false; full modalities/tools/reasoning/options/structured-output/limits retained. Supplemental metadata cannot expand effective restrictions. |
 | Inclusion | Default-on auto-include follows saved Free/Paid policy | Explicit disables win. Configured Paid permits future eligible configured models; explicit enables cannot bypass hard gates. |

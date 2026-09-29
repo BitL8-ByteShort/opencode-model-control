@@ -141,6 +141,21 @@ test("raw absent, malformed and CLI normalized zeros cannot authorize free", () 
     assert.equal(evidence(cost).class, "unknown");
   assert.equal(evidence({ input: 0, output: 0 }).class, "free");
 });
+test("zero token rates on plan-specific providers do not certify free access, including old public caches", () => {
+  for (const providerId of ["zai-coding-plan", "alibaba-coding-plan", "minimax-coding-plan", "xiaomi-token-plan-sgp", "opencode-go", "kimi-for-coding"]) {
+    const api = { id: "model", npm: "@ai-sdk/openai-compatible", url: "https://api.example/v1" };
+    const id = `${providerId}/model`;
+    const snapshot = normalizeModelsDev({
+      [providerId]: { id: providerId, npm: api.npm, api: api.url,
+        models: { model: { id: "model", cost: { input: 0, output: 0 } } } },
+    }, { fetchedAt: at });
+    assert.equal(resolveModelEvidence({ id, api }, snapshot).class, "unknown", providerId);
+    assert.ok(resolveModelEvidence({ id, api }, snapshot).reasons.includes("plan-access-unverified"));
+    // A pre-upgrade normalized cache or a 304 response must not retain old permission.
+    snapshot.models[id].pricing = { class: "free", rates: { input: 0, output: 0 }, reasons: [] };
+    assert.equal(resolveModelEvidence({ id, api }, snapshot).class, "unknown", providerId);
+  }
+});
 test("every supplied billing dimension participates, including tiers, legacy and modes", () => {
   for (const dimension of [
     "input",

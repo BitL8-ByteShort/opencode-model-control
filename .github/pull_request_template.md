@@ -8,7 +8,7 @@
 
 ## Safety and compatibility
 
-- [ ] Unknown pricing and unavailable models still fail closed in every cost mode.
+- [ ] Free and legacy verified-price Paid still reject unknown pricing; configured Paid still checks connection identity, availability, and capabilities.
 - [ ] Paid routing remains an explicit user choice and cannot bypass capability gates.
 - [ ] No credentials, private prompts, customer data, absolute user paths, or generated local settings are included.
 - [ ] OpenCode config writes are explicit, receipt-owned, recoverable, and preserve unrelated settings.

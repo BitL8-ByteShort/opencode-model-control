@@ -1,8 +1,20 @@
 # Release packages
 
-This ledger records verified release tarballs and their SHA-256 digests. npm is the default install channel after registry verification. Historical copies remain in this directory; 0.3.0 links to the exact public artifact instead of adding another binary copy to the repository.
+This ledger records verified release tarballs and their SHA-256 digests. npm is the default install channel after registry verification. Historical copies remain in this directory; newer releases link to the exact public artifact instead of adding another binary copy to the repository.
 
 Each final tarball is produced once with `npm pack` from clean protected main, then tested on the installed-artifact matrix. Its checksum is recorded externally after the artifact is built; a ledger update does not rebuild or change the release bytes.
+
+## 0.4.0
+
+- File: `opencode-model-control-0.4.0.tgz`
+- SHA-256: `1ee2d3ab864f2615ec3f8c750a400694ac8587129bdef78b0d1b275793f0828b`
+- Source commit: [`942a94c5eb354da877b22ddc6eb37b098a598f7c`](https://github.com/BitL8-ByteShort/opencode-model-control/commit/942a94c5eb354da877b22ddc6eb37b098a598f7c)
+- Source tag: [`v0.4.0`](https://github.com/BitL8-ByteShort/opencode-model-control/releases/tag/v0.4.0) (immutable GitHub release).
+- Downloads: [GitHub tarball](https://github.com/BitL8-ByteShort/opencode-model-control/releases/download/v0.4.0/opencode-model-control-0.4.0.tgz), [npm tarball](https://registry.npmjs.org/opencode-model-control/-/opencode-model-control-0.4.0.tgz), or [npm package 0.4.0](https://www.npmjs.com/package/opencode-model-control/v/0.4.0).
+- Release evidence: [SHA256SUMS](https://github.com/BitL8-ByteShort/opencode-model-control/releases/download/v0.4.0/SHA256SUMS), [pack evidence](https://github.com/BitL8-ByteShort/opencode-model-control/releases/download/v0.4.0/pack-evidence.json), [final matrix evidence](https://github.com/BitL8-ByteShort/opencode-model-control/releases/download/v0.4.0/acceptance-evidence.zip), and [public npm verification](https://github.com/BitL8-ByteShort/opencode-model-control/releases/download/v0.4.0/npm-public-verification.zip).
+- Final acceptance: [CI run 34688784337](https://github.com/BitL8-ByteShort/opencode-model-control/actions/runs/34688784337), with the exact matrix and test boundaries in [support evidence](../docs/support-matrix.md).
+
+The public npm download matched the final SHA-256 and registry integrity on 2026-09-12. A clean `opencode-model-control@0.4.0` install matched all 83 package files and passed the recorded installed-package checks. This is historical evidence for 0.4.0, not acceptance for a later version.
 
 ## 0.3.0
 

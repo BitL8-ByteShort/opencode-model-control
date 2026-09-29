@@ -1,6 +1,6 @@
 {
   "name": "opencode-model-control",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "A local model routing control panel and MCP companion for OpenCode.",
   "keywords": [
     "opencode",
@@ -63,20 +63,20 @@
     "test:metadata": "node scripts/metadata-smoke.mjs"
   },
   "devDependencies": {
-    "@modelcontextprotocol/client": "2.0.0",
-    "@playwright/test": "1.58.2",
-    "@types/node": "26.4.0",
-    "@types/react": "19.2.18",
-    "@types/react-dom": "19.2.5",
+    "@modelcontextprotocol/client": "2.2.0",
+    "@playwright/test": "1.63.0",
+    "@types/node": "26.6.3",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
     "@vitejs/plugin-react": "6.1.1",
-    "react": "19.2.8",
-    "react-dom": "19.2.8",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
     "typescript": "7.0.2",
-    "vite": "8.2.2"
+    "vite": "8.3.1"
   },
   "dependencies": {
-    "@modelcontextprotocol/server": "2.0.0",
+    "@modelcontextprotocol/server": "2.2.0",
     "jsonc-parser": "3.3.1",
-    "zod": "4.5.4"
+    "zod": "4.6.5"
   }
 }

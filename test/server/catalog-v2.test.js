@@ -169,6 +169,17 @@ test("new paid, unknown and explicit false capability reports remain distinguish
     "unknown",
   );
 });
+test("host-listed beta and enabled alpha models retain availability and role eligibility", () => {
+  for (const status of ["beta", "alpha"]) {
+    const live = parseOpenCodeVerboseCatalog(`opencode/new-preview\n${JSON.stringify({ ...model("new-preview"), status })}`);
+    const catalog = validateCatalog(mergeDiscoveredCatalog(loadModelCatalog(), live, {
+      publicMetadata: publicData("new-preview"),
+    }));
+    const entry = catalog.models.find(m => m.id === "opencode/new-preview");
+    assert.equal(entry.available, true, status);
+    assert.ok(eligibleModelsForRole({ catalog, settings: createDefaultSettings(catalog), role: "code-worker", access: "write" }).some(m => m.id === entry.id));
+  }
+});
 test("legacy migration never invents freshness and CLI zeros do not renew bundled authorization", () => {
   const catalog = loadModelCatalog();
   for (const entry of catalog.models)

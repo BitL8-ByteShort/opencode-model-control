@@ -1,3 +1,5 @@
+import { isPlanProvider } from "../core/access-policy.js";
+
 const AVAILABLE_STATES = new Set([
   "available",
   "ready",
@@ -52,6 +54,11 @@ export function isModelFree(model) {
 }
 
 export function modelCostClass(model) {
+  const priceClass = reportedModelCostClass(model);
+  return isPlanProvider(model?.id) && priceClass === "free" ? "unknown" : priceClass;
+}
+
+function reportedModelCostClass(model) {
   if (["free", "paid", "unknown"].includes(model?.pricingClass)) {
     if (
       model?.pricing?.expiresAt &&

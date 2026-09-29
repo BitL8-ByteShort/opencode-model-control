@@ -120,7 +120,9 @@ export function parseOpenCodeVerboseCatalog(
         provider: splitModelId(id)[0],
         name:
           typeof value?.name === "string" ? value.name : splitModelId(id)[1],
-        status: value?.status === "active" ? "active" : "unavailable",
+        // OpenCode filters deprecated and disabled alpha models before listing.
+        // Listed beta/alpha records remain usable, subject to normal policy.
+        status: ["active", "beta", "alpha"].includes(value?.status) ? "active" : "unavailable",
         // OpenCode can normalize missing prices to zero. A zero reported here is
         // not sufficient evidence that an arbitrary provider model is free.
         priceClass: reportedPricing.class === "paid" ? "paid" : "unknown",

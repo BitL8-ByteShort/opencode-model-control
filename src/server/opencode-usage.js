@@ -12,7 +12,7 @@ const DEFAULT_TIMEOUT_MS = 10_000;
 const MAX_OUTPUT_BYTES = 1024 * 1024;
 const MAX_MODEL_ROWS = 250;
 const PROVIDER_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/u;
-const MODEL_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:+/-]*$/u;
+const MODEL_ID_PATTERN = /^[A-Za-z0-9@~][A-Za-z0-9._:+/@~-]*$/u;
 const CAVEATS = Object.freeze([
   "Token counts are usage. OpenCode-recorded cost is not a provider bill or subscription charge.",
   "Missing cost or token fields stay unreported instead of becoming zero.",

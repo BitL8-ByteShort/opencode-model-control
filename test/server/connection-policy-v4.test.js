@@ -7,13 +7,14 @@ import { ControlService } from "../../src/server/service.js";
 import { publicFixture, liveModel } from "../fixtures/public-metadata.js";
 import { readConnectionSnapshot, writeConnectionSnapshot } from "../../src/server/connection-store.js";
 
-async function fixture(t) {
+async function fixture(t, options = {}) {
   const root = await mkdtemp(join(tmpdir(), "omc-connection-policy-"));
   const settingsPath = join(root, "settings.json");
   const service = await new ControlService({
     settingsPath,
     discovery: async () => ({ installed: true, complete: true, models: [liveModel("new/model")], error: null }),
     metadataFetch: async () => new Response(JSON.stringify(publicFixture([{ id: "new/model" }]))),
+    ...options,
   }).initialize();
   t.after(async () => { await service.close(); await rm(root, { recursive: true, force: true }); });
   return { service, settingsPath };
@@ -66,6 +67,44 @@ test("failed discovery preserves cached connection bindings without renewing obs
   service.discovery = async () => { throw new Error("offline"); };
   await service.refreshCatalog();
   assert.deepEqual(service.getState().connections, before);
+});
+
+test("partial provider discovery preserves unchanged mixed routes, billing and pinned assignments", async (t) => {
+  const models = ["a", "b"].map(key => liveModel(`gateway/${key}`, {
+    api: { id: key, npm: "@ai-sdk/openai-compatible", url: `https://route-${key}.invalid/v1`, urlValid: true },
+  }));
+  const { service } = await fixture(t, {
+    discovery: async () => ({ installed: true, complete: true, models }),
+    metadataFetch: async () => new Response(JSON.stringify(publicFixture(models))),
+  });
+  let state = service.getState();
+  const connection = state.connections[0];
+  state = await service.updateSettings({ ...state.settings,
+    costPolicy: "known-cost", paidEligibility: "configured-connections",
+    roleAssignments: { ...state.settings.roleAssignments, orchestrator: "gateway/a" },
+    roleConnections: { ...state.settings.roleConnections, orchestrator: binding(connection) },
+    billingDeclarations: { [connection.id]: { kind: "subscription", bindingRevision: connection.bindingRevision } },
+  }, revisions(state));
+  assert.equal(service.route({ task: "Explain this function", modality: "text" }).assignments[0].modelId, "gateway/a");
+  service.discovery = async () => ({ installed: true, complete: false, models: [models[0]] });
+  await service.refreshCatalog();
+  state = service.getState();
+  assert.equal(state.catalog.find(m => m.id === "gateway/b").available, true);
+  assert.equal(state.connections[0].bindingRevision, connection.bindingRevision);
+  assert.equal(state.connections[0].billing.kind, "subscription");
+  assert.deepEqual(state.blockedRoles.orchestrator, []);
+  assert.equal(service.route({ task: "Explain this function", modality: "text" }).assignments[0].modelId, "gateway/a");
+
+  // Partial observations must still invalidate an actually changed endpoint.
+  service.discovery = async () => ({ installed: true, complete: false,
+    models: [{ ...models[0], api: { ...models[0].api, url: "https://changed.invalid/v1" } }],
+  });
+  await service.refreshCatalog();
+  state = service.getState();
+  assert.notEqual(state.connections[0].bindingRevision, connection.bindingRevision);
+  assert.equal(state.connections[0].billing.kind, "unknown");
+  assert.ok(state.blockedRoles.orchestrator.includes("connection-binding-changed"));
+  assert.throws(() => service.route({ task: "Explain this function", modality: "text" }), { code: "INVALID_ROLE_ASSIGNMENT" });
 });
 
 test("new explicit pins cannot bypass or remove their exact connection binding", async (t) => {
