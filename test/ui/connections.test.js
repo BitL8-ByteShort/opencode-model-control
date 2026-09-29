@@ -1,10 +1,23 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {normalizeState, selectRoleModel, modelEligibilityReasons, effectiveBilling, toggleEnabledModel} from "../../src/ui/model-control.js";
+import {normalizeState, selectRoleModel, modelEligibilityReasons, effectiveBilling, toggleEnabledModel, modelCostClass, isModelCostAllowed} from "../../src/ui/model-control.js";
 import {createEditor, editDraft, receiveSnapshot, finishSave, startSave} from "../../src/ui/editor-state.js";
 import {attributedUsageGroups, attributionCoverageWarning} from "../../src/ui/usage-view.js";
 const connection = {id: "private-id", providerId: "newvendor", bindingRevision: "r1", billing: {kind: "unknown", source: "unknown"}, entitlement: "not-reported"};
 const raw = {settingsRevision: "s1", connectionRevision: "c1", connections: [connection], settings: {costPolicy: "known-cost", paidEligibility: "configured-connections"}, catalog: [{id:"newvendor/model", available:true, modalities:{input:["text"],output:["text"]}, roles:{reviewer:1}, access:["read"], pricingClass:"unknown"}]};
+test("old free labels for plan slots cannot enable Free routing in the panel", () => {
+ for (const prices of [
+  {pricingClass:"free"},
+  {pricingClass:undefined, pricing:{class:"unknown"}, free:true},
+  {pricingClass:undefined, pricing:{class:"unknown"}, free:{verified:true, inputUsdPerMillion:0, outputUsdPerMillion:0}},
+ ]) {
+  const model = {...raw.catalog[0], id:"minimax-coding-plan/MiniMax-M3", ...prices};
+  assert.equal(modelCostClass(model), "unknown");
+  assert.equal(isModelCostAllowed(model, {costPolicy:"free-only"}), false);
+  assert.equal(isModelCostAllowed(model, {costPolicy:"known-cost", paidEligibility:"configured-connections"}), true);
+ }
+ assert.equal(modelCostClass({...raw.catalog[0], id:"minimax-coding-plan/MiniMax-M3", pricingClass:"paid", free:true}), "paid");
+});
 test("pins capture exact slot binding and retain old pins when the binding changes", () => {
  const state=normalizeState(raw);
  const selected=selectRoleModel(state.settings,state.catalog,"reviewer","newvendor/model");

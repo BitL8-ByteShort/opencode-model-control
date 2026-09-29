@@ -1,4 +1,5 @@
 import { classifyPricingEvidence } from "./pricing.js";
+import { guardPlanPricing } from "./access-policy.js";
 import {
   COST_POLICIES,
   COST_PREFERENCES,
@@ -7,7 +8,7 @@ import {
 } from "./constants.js";
 
 function classifyModelPricing(model, options) {
-  return classifyPricingEvidence(model?.pricing, options);
+  return classifyPricingEvidence(guardPlanPricing(model?.id, model?.pricing), options);
 }
 
 function modelEnabled(settings, modelId) {

@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { isPlainObject } from "./utils.js";
+import { guardPlanPricing } from "./access-policy.js";
 
 export const MODELS_DEV_URL = "https://models.dev/api.json";
 export const PRICING_TTL_MS = 24 * 60 * 60 * 1000;
@@ -282,7 +283,7 @@ export function normalizeModelsDev(raw, { fetchedAt, digest } = {}) {
       }
       models[`${providerId}/${key}`] = {
         api,
-        pricing,
+        pricing: guardPlanPricing(`${providerId}/${key}`, pricing),
         capabilities: capabilityDetails(model, "models.dev", fetchedAt),
       };
     }
@@ -312,7 +313,7 @@ export function resolveModelEvidence(live, snapshot) {
   const priceRouteMismatch =
     !identityConflict && !publicRatesApply(publicApi, api);
   return {
-    ...record.pricing,
+    ...guardPlanPricing(live.id, record.pricing),
     ...(identityConflict
       ? { class: "unknown", reasons: ["identity-conflict"] }
       : priceRouteMismatch

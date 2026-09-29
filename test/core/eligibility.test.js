@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { loadModelCatalog, syntheticPricing } from "../fixtures/catalog.js";
-import { createDefaultSettings, eligibleModelsForRole } from "../../src/core/index.js";
+import { createDefaultSettings, eligibleModelsForRole, classifyModelPricing } from "../../src/core/index.js";
 import { resolveEligibility } from "../../src/core/eligibility.js";
 
 function paidUnknown(catalog, extras = {}) {
@@ -28,6 +28,16 @@ function paidUnknown(catalog, extras = {}) {
   };
   return model;
 }
+
+test("saved zero-rate plan models remain blocked in Free before refresh or billing declaration", () => {
+  const catalog = loadModelCatalog();
+  const model = { ...catalog.models[0], id: "zai-coding-plan/glm-5.3-flash" };
+  const settings = createDefaultSettings(catalog);
+  assert.equal(classifyModelPricing(model), "unknown");
+  assert.equal(resolveEligibility({ model, settings }).allowed, false);
+  assert.equal(resolveEligibility({ model, settings: { ...settings,
+    costPolicy: "known-cost", paidEligibility: "configured-connections" } }).allowed, true);
+});
 
 test("eligibility matrix: free stays verified-free; configured paid allows unknown estimates", () => {
   const catalog = loadModelCatalog();
