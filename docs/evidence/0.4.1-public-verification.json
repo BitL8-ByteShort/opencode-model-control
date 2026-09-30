@@ -1,0 +1,286 @@
+{
+  "schemaVersion": 1,
+  "package": "opencode-model-control",
+  "version": "0.4.1",
+  "recordedAt": "2026-09-30T01:15:26.240722+00:00",
+  "verificationLocalDate": "2026-09-29",
+  "verificationTimezone": "America/New_York",
+  "sourceCommit": "306caba5dc6d000fd19d694c8e497f59acfd49f0",
+  "finalTarballSha256": "9a04514bc7bf2ab251b027f9da18b03a3f8d786c84f95d8b4245e645a12bd2e5",
+  "finalArtifactCi": "https://github.com/BitL8-ByteShort/opencode-model-control/actions/runs/36647447813",
+  "githubRelease": {
+    "assets": [
+      {
+        "digest": "sha256:46fae56e1968e7bde1c7026b9b05a9dc5199549ab11da29c848cdc967983c763",
+        "name": "acceptance-evidence.zip",
+        "size": 21953
+      },
+      {
+        "digest": "sha256:803e8e86f9da41e800d983444e4f59f27503c487e3aac9197cb1fe61f39f6686",
+        "name": "npm-public-verification.zip",
+        "size": 9862
+      },
+      {
+        "digest": "sha256:9a04514bc7bf2ab251b027f9da18b03a3f8d786c84f95d8b4245e645a12bd2e5",
+        "name": "opencode-model-control-0.4.1.tgz",
+        "size": 416971
+      },
+      {
+        "digest": "sha256:ddce74c1642d35a256fdfea7d87354dcd259514538c0be4921d3dc8d96fca020",
+        "name": "pack-evidence.json",
+        "size": 392
+      },
+      {
+        "digest": "sha256:9c689372c77d2c08aa509a511e888239e3c8ee4b9818b5b8b2c9b5d7a3a19fd8",
+        "name": "SHA256SUMS",
+        "size": 99
+      }
+    ],
+    "draft": false,
+    "html_url": "https://github.com/BitL8-ByteShort/opencode-model-control/releases/tag/v0.4.1",
+    "id": 399613085,
+    "immutable": true,
+    "published_at": "2026-09-30T01:11:13Z",
+    "tag_name": "v0.4.1",
+    "target_commitish": "306caba5dc6d000fd19d694c8e497f59acfd49f0",
+    "verifiedTagCommit": "306caba5dc6d000fd19d694c8e497f59acfd49f0"
+  },
+  "channels": {
+    "npm": {
+      "download": {
+        "schemaVersion": 1,
+        "channel": "npm",
+        "package": "opencode-model-control",
+        "version": "0.4.1",
+        "retrievedAt": "2026-09-30T01:03:33.200Z",
+        "url": "https://registry.npmjs.org/opencode-model-control/-/opencode-model-control-0.4.1.tgz",
+        "credentialFree": true,
+        "bytes": 416971,
+        "sha256": "9a04514bc7bf2ab251b027f9da18b03a3f8d786c84f95d8b4245e645a12bd2e5",
+        "sha512": "sha512-4l5/1EXNWeGChStSPz8mN1iTw0YkiojhcgjhD7oeI6Yd5HFUbY1FVgdRFH7C7MCqYGfTJWYt1apSd4MwVYviLw==",
+        "sha1": "80d1d175dda99a371a9ac39890a1d30d8d5ed62c",
+        "matchesTestedFinalBytes": true,
+        "registryIntegrityMatches": true,
+        "registryShasumMatches": true,
+        "distTags": {
+          "latest": "0.4.1"
+        },
+        "platform": "linux",
+        "arch": "x64",
+        "kernel": "7.0.0-31-generic",
+        "node": "v24.21.0"
+      },
+      "acceptance": {
+        "schemaVersion": 1,
+        "kind": "exact-tarball-local-acceptance",
+        "sha256": "9a04514bc7bf2ab251b027f9da18b03a3f8d786c84f95d8b4245e645a12bd2e5",
+        "node": "v24.21.0",
+        "platform": "linux",
+        "osRelease": "7.0.0-31-generic",
+        "architecture": "x64",
+        "checks": [
+          "clean-production-tarball-install",
+          "installed-tarball-plugin-both-real-hosts",
+          "installed-production-dist-browser-interactions",
+          "fresh-current-connect-status-disconnect",
+          "actual-0.2.1-free-policy-preserving-v2-v4-private-exact-backup",
+          "actual-0.3.0-free-policy-preserving-v3-v4-private-exact-backup",
+          "actual-0.3.0-paid-policy-preserving-v3-v4-private-exact-backup",
+          "connection-update-status-without-config-or-receipt-write",
+          "config-comment-preserved",
+          "actual-host-connected-restart",
+          "installed-cli-mcp-handshake-and-status",
+          "production-start-without-vite",
+          "read-only-panel",
+          "restart-token-rotation-and-stale-token-rejection",
+          "private-settings-receipt-and-config-backups",
+          "disconnect-restores-exact-config",
+          "actual-host-disconnected-restart-status",
+          "post-upgrade-disconnect-reconnect-recovery-with-explicit-restarts"
+        ],
+        "realProviderInferenceRequests": 0,
+        "mockedProviderRequests": 114,
+        "publicMetadata": "mocked unavailable; separate live metadata smoke required",
+        "version": "0.4.1",
+        "hostAcceptance": [
+          {
+            "host": "1.18.22",
+            "target": "installed-tarball",
+            "tarballSha256": "9a04514bc7bf2ab251b027f9da18b03a3f8d786c84f95d8b4245e645a12bd2e5",
+            "passed": true,
+            "scenarios": 20,
+            "actualRequests": 57
+          },
+          {
+            "host": "1.18.28",
+            "target": "installed-tarball",
+            "tarballSha256": "9a04514bc7bf2ab251b027f9da18b03a3f8d786c84f95d8b4245e645a12bd2e5",
+            "passed": true,
+            "scenarios": 20,
+            "actualRequests": 57
+          }
+        ],
+        "browserAcceptance": {
+          "schemaVersion": 1,
+          "kind": "installed-production-ui-browser",
+          "tarballSha256": "9a04514bc7bf2ab251b027f9da18b03a3f8d786c84f95d8b4245e645a12bd2e5",
+          "node": "v24.21.0",
+          "platform": "linux",
+          "osRelease": "7.0.0-31-generic",
+          "architecture": "x64",
+          "passed": true,
+          "expected": 14,
+          "unexpected": 0,
+          "skipped": 0,
+          "flaky": 0,
+          "assets": [
+            {
+              "path": "/",
+              "sha256": "64aff561e4df53fc14d8fec60b74af383e388074bc1afd052a6453e2edd4c11b"
+            },
+            {
+              "path": "/assets/index-CfjdM02x.js",
+              "sha256": "e38ad4e62e1d1ec6e4724d9e0bec5a5b5bc7abac0460c3e7879cf282157f3d6f"
+            },
+            {
+              "path": "/assets/index-DId29m1T.css",
+              "sha256": "25d8ee2bd449d8545992012d5bba63d2f2832c04f736c4e5f1ca7035425b1975"
+            }
+          ]
+        },
+        "upgradeBaseline": {
+          "version": "0.3.0",
+          "url": "https://registry.npmjs.org/opencode-model-control/-/opencode-model-control-0.3.0.tgz",
+          "sha256": "26a532b44c96d643c0543a78d2fef1ab2c1a3b83886e6715cef0ab683d3413ab",
+          "integrity": "sha512-mwHj6ME98kVgXqy51fZRS2iWQYBiQnUuSF5aN52eTf2K4EYCHlI3uN4Ft/fZa3+l8bawo70+IDwDBWGA6xKWfw==",
+          "retrievedAt": "2026-09-30T01:05:14.401Z",
+          "traffic": "public npm artifact and metadata retrieval; no inference"
+        },
+        "passed": true
+      }
+    },
+    "github": {
+      "download": {
+        "schemaVersion": 1,
+        "channel": "github",
+        "package": "opencode-model-control",
+        "version": "0.4.1",
+        "retrievedAt": "2026-09-30T01:11:37.359Z",
+        "url": "https://github.com/BitL8-ByteShort/opencode-model-control/releases/download/v0.4.1/opencode-model-control-0.4.1.tgz",
+        "credentialFree": true,
+        "bytes": 416971,
+        "sha256": "9a04514bc7bf2ab251b027f9da18b03a3f8d786c84f95d8b4245e645a12bd2e5",
+        "sha512": "sha512-4l5/1EXNWeGChStSPz8mN1iTw0YkiojhcgjhD7oeI6Yd5HFUbY1FVgdRFH7C7MCqYGfTJWYt1apSd4MwVYviLw==",
+        "sha1": "80d1d175dda99a371a9ac39890a1d30d8d5ed62c",
+        "matchesTestedFinalBytes": true,
+        "platform": "linux",
+        "arch": "x64",
+        "kernel": "7.0.0-31-generic",
+        "node": "v24.21.0"
+      },
+      "acceptance": {
+        "schemaVersion": 1,
+        "kind": "exact-tarball-local-acceptance",
+        "sha256": "9a04514bc7bf2ab251b027f9da18b03a3f8d786c84f95d8b4245e645a12bd2e5",
+        "node": "v24.21.0",
+        "platform": "linux",
+        "osRelease": "7.0.0-31-generic",
+        "architecture": "x64",
+        "checks": [
+          "clean-production-tarball-install",
+          "installed-tarball-plugin-both-real-hosts",
+          "installed-production-dist-browser-interactions",
+          "fresh-current-connect-status-disconnect",
+          "actual-0.2.1-free-policy-preserving-v2-v4-private-exact-backup",
+          "actual-0.3.0-free-policy-preserving-v3-v4-private-exact-backup",
+          "actual-0.3.0-paid-policy-preserving-v3-v4-private-exact-backup",
+          "connection-update-status-without-config-or-receipt-write",
+          "config-comment-preserved",
+          "actual-host-connected-restart",
+          "installed-cli-mcp-handshake-and-status",
+          "production-start-without-vite",
+          "read-only-panel",
+          "restart-token-rotation-and-stale-token-rejection",
+          "private-settings-receipt-and-config-backups",
+          "disconnect-restores-exact-config",
+          "actual-host-disconnected-restart-status",
+          "post-upgrade-disconnect-reconnect-recovery-with-explicit-restarts"
+        ],
+        "realProviderInferenceRequests": 0,
+        "mockedProviderRequests": 114,
+        "publicMetadata": "mocked unavailable; separate live metadata smoke required",
+        "version": "0.4.1",
+        "hostAcceptance": [
+          {
+            "host": "1.18.22",
+            "target": "installed-tarball",
+            "tarballSha256": "9a04514bc7bf2ab251b027f9da18b03a3f8d786c84f95d8b4245e645a12bd2e5",
+            "passed": true,
+            "scenarios": 20,
+            "actualRequests": 57
+          },
+          {
+            "host": "1.18.28",
+            "target": "installed-tarball",
+            "tarballSha256": "9a04514bc7bf2ab251b027f9da18b03a3f8d786c84f95d8b4245e645a12bd2e5",
+            "passed": true,
+            "scenarios": 20,
+            "actualRequests": 57
+          }
+        ],
+        "browserAcceptance": {
+          "schemaVersion": 1,
+          "kind": "installed-production-ui-browser",
+          "tarballSha256": "9a04514bc7bf2ab251b027f9da18b03a3f8d786c84f95d8b4245e645a12bd2e5",
+          "node": "v24.21.0",
+          "platform": "linux",
+          "osRelease": "7.0.0-31-generic",
+          "architecture": "x64",
+          "passed": true,
+          "expected": 14,
+          "unexpected": 0,
+          "skipped": 0,
+          "flaky": 0,
+          "assets": [
+            {
+              "path": "/",
+              "sha256": "64aff561e4df53fc14d8fec60b74af383e388074bc1afd052a6453e2edd4c11b"
+            },
+            {
+              "path": "/assets/index-CfjdM02x.js",
+              "sha256": "e38ad4e62e1d1ec6e4724d9e0bec5a5b5bc7abac0460c3e7879cf282157f3d6f"
+            },
+            {
+              "path": "/assets/index-DId29m1T.css",
+              "sha256": "25d8ee2bd449d8545992012d5bba63d2f2832c04f736c4e5f1ca7035425b1975"
+            }
+          ]
+        },
+        "upgradeBaseline": {
+          "version": "0.3.0",
+          "url": "https://registry.npmjs.org/opencode-model-control/-/opencode-model-control-0.3.0.tgz",
+          "sha256": "26a532b44c96d643c0543a78d2fef1ab2c1a3b83886e6715cef0ab683d3413ab",
+          "integrity": "sha512-mwHj6ME98kVgXqy51fZRS2iWQYBiQnUuSF5aN52eTf2K4EYCHlI3uN4Ft/fZa3+l8bawo70+IDwDBWGA6xKWfw==",
+          "retrievedAt": "2026-09-30T01:13:20.323Z",
+          "traffic": "public npm artifact and metadata retrieval; no inference"
+        },
+        "passed": true
+      }
+    }
+  },
+  "cleanNpmNameInstall": {
+    "schemaVersion": 1,
+    "package": "opencode-model-control",
+    "version": "0.4.1",
+    "checkedAt": "2026-09-30T01:05:07.021121+00:00",
+    "method": "clean version-pinned public npm name install in disposable prefix",
+    "userAndGlobalNpmConfig": "disabled",
+    "cache": "fresh disposable cache",
+    "installSucceeded": true,
+    "cliVersionMatches": true,
+    "packageFilesMatched": 84,
+    "allPackageFilesMatchPublicTarball": true
+  },
+  "npmFullEvidence": "https://github.com/BitL8-ByteShort/opencode-model-control/releases/download/v0.4.1/npm-public-verification.zip",
+  "boundary": "Public-channel acceptance ran separately on Linux x64 / Node 24.21.0. The final CI Linux/macOS and Node 22/24 matrix is separate evidence. These synthetic loopback checks do not prove real-provider access, billing, entitlement, or model quality."
+}
