@@ -2,7 +2,7 @@
 
 This matrix describes implemented 0.4.1 behavior and dated compatibility evidence. Source verification, final installed-artifact acceptance, and public-channel verification are separate claims. See [Releasing](releasing.md) for the final-byte gates and the [release index](https://github.com/BitL8-ByteShort/opencode-model-control/releases) for published versions.
 
-## 0.4.1 verification boundary
+## 0.4.1 platform and public artifact evidence
 
 Final [CI run 36647447813](https://github.com/BitL8-ByteShort/opencode-model-control/actions/runs/36647447813) passed all seven jobs at source commit [`306caba5dc6d000fd19d694c8e497f59acfd49f0`](https://github.com/BitL8-ByteShort/opencode-model-control/commit/306caba5dc6d000fd19d694c8e497f59acfd49f0). It produced one final tarball from clean main, SHA-256 `9a04514bc7bf2ab251b027f9da18b03a3f8d786c84f95d8b4245e645a12bd2e5`, and tested those exact bytes under all four OS/Node combinations.
 
@@ -13,7 +13,9 @@ Final [CI run 36647447813](https://github.com/BitL8-ByteShort/opencode-model-con
 
 Each job passed 18 package checks, both real hosts (20 scenarios and 57 synthetic loopback requests per host), and 14 production browser scenarios with zero failures, skips, or flakes. Deliberately corrupted plugin and UI tarballs were rejected on Linux/Node 22.12.0. Each package run made 114 loopback requests and zero real-provider inference requests; the live public metadata smoke remains a separate check.
 
-This records final-artifact acceptance, not publication or public-download verification. Check the [release index](https://github.com/BitL8-ByteShort/opencode-model-control/releases) and [npm package](https://www.npmjs.com/package/opencode-model-control) for published availability. The [package ledger](../packages/README.md) identifies the tested source and bytes. Later documentation commits do not rebuild that artifact.
+On 2026-09-29 (America/New_York), credential-free public npm and GitHub downloads matched that final SHA-256, and npm registry SHA-512 integrity matched. The [GitHub release](https://github.com/BitL8-ByteShort/opencode-model-control/releases/tag/v0.4.1) is immutable and its tag points to the source commit above. A clean version-pinned npm name install reported CLI 0.4.1 and matched all 84 package files.
+
+Each public download separately passed all 18 package checks, both OpenCode hosts (20 scenarios and 57 synthetic loopback requests each), and all 14 production browser scenarios with zero failures, skips, or flakes. These public-channel runs used Linux x64 kernel 7.0.0-31-generic and Node 24.21.0, separately from the final CI matrix above. Each made 114 synthetic loopback requests and zero real-provider inference requests. See the [public verification receipt](evidence/0.4.1-public-verification.json), [full npm verification evidence](https://github.com/BitL8-ByteShort/opencode-model-control/releases/download/v0.4.1/npm-public-verification.zip), and [package ledger](../packages/README.md). Later documentation commits do not rebuild that artifact.
 
 ## Historical 0.4.0 platform and artifact evidence
 

@@ -8,7 +8,7 @@ The control panel runs on `127.0.0.1`. OpenCode remains responsible for provider
 
 The running app is authoritative for model names, availability, pricing evidence, and role eligibility.
 
-> This source documents **0.4.1**; `@latest` installs the version currently published on [npm](https://www.npmjs.com/package/opencode-model-control). Check the [release index](https://github.com/BitL8-ByteShort/opencode-model-control/releases) for availability and the [support matrix](docs/support-matrix.md) for verified compatibility.
+> **0.4.1** is published on [npm](https://www.npmjs.com/package/opencode-model-control/v/0.4.1) and [GitHub](https://github.com/BitL8-ByteShort/opencode-model-control/releases/tag/v0.4.1). `@latest` installs the current npm release. See the [support matrix](docs/support-matrix.md) for verified compatibility.
 
 ## What it does
 
@@ -55,7 +55,7 @@ npm install --global opencode-model-control@latest
 opencode-model-control
 ```
 
-The first command installs the version tagged `latest` on npm and its runtime dependencies. Check `opencode-model-control --version` against the public release notes; an older published version may not include the fixes described here. The second command starts the local panel and opens it in the default browser.
+The first command installs the version tagged `latest` on npm and its runtime dependencies. Check `opencode-model-control --version` against the public release notes. The second command starts the local panel and opens it in the default browser.
 
 Then:
 
