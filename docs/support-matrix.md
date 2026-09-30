@@ -4,7 +4,16 @@ This matrix describes implemented 0.4.1 behavior and dated compatibility evidenc
 
 ## 0.4.1 verification boundary
 
-The release targets the same Linux/macOS and Node 22.12.0/24.x matrix, with OpenCode 1.18.22 and 1.18.28. Final artifact and public-download evidence belongs with the immutable release assets after the release checklist passes. Earlier releases do not establish acceptance for the new bytes.
+Final [CI run 36647447813](https://github.com/BitL8-ByteShort/opencode-model-control/actions/runs/36647447813) passed all seven jobs at source commit [`306caba5dc6d000fd19d694c8e497f59acfd49f0`](https://github.com/BitL8-ByteShort/opencode-model-control/commit/306caba5dc6d000fd19d694c8e497f59acfd49f0). It produced one final tarball from clean main, SHA-256 `9a04514bc7bf2ab251b027f9da18b03a3f8d786c84f95d8b4245e645a12bd2e5`, and tested those exact bytes under all four OS/Node combinations.
+
+| OS/kernel | Architecture | Node versions executed | OpenCode versions executed |
+| --- | --- | --- | --- |
+| Linux 6.17.0-1022-azure | x64 | 22.12.0 and 24.21.0 | 1.18.22 and 1.18.28 under each Node version |
+| macOS / Darwin 25.6.0 | arm64 | 22.12.0 and 24.20.0 | 1.18.22 and 1.18.28 under each Node version |
+
+Each job passed 18 package checks, both real hosts (20 scenarios and 57 synthetic loopback requests per host), and 14 production browser scenarios with zero failures, skips, or flakes. Deliberately corrupted plugin and UI tarballs were rejected on Linux/Node 22.12.0. Each package run made 114 loopback requests and zero real-provider inference requests; the live public metadata smoke remains a separate check.
+
+This records final-artifact acceptance, not publication or public-download verification. Check the [release index](https://github.com/BitL8-ByteShort/opencode-model-control/releases) and [npm package](https://www.npmjs.com/package/opencode-model-control) for published availability. The [package ledger](../packages/README.md) identifies the tested source and bytes. Later documentation commits do not rebuild that artifact.
 
 ## Historical 0.4.0 platform and artifact evidence
 
