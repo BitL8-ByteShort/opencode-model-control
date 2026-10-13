@@ -56,7 +56,7 @@ jobs:
         env:
           OMC_ARTIFACT_STAGE: ${{ inputs.artifact-stage || 'candidate' }}
         run: node scripts/pack-artifact.mjs artifact
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: omc-${{ inputs.artifact-stage || 'candidate' }}-tarball
           path: artifact/
@@ -99,7 +99,7 @@ jobs:
         run: OMC_HOST_BINARY="$RUNNER_TEMP/host128/node_modules/.bin/opencode" OMC_EVIDENCE_PATH=evidence/artifact-guards.json node scripts/artifact-guards.mjs artifact/*.tgz
       - name: Live public metadata smoke, no inference
         run: OMC_EVIDENCE_PATH=evidence/live-public-metadata.json npm run test:metadata
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: acceptance-${{ matrix.os }}-${{ matrix.node-version }}
