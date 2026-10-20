@@ -63,7 +63,7 @@
     "test:metadata": "node scripts/metadata-smoke.mjs"
   },
   "devDependencies": {
-    "@modelcontextprotocol/client": "2.2.0",
+    "@modelcontextprotocol/client": "2.3.0",
     "@playwright/test": "1.63.0",
     "@types/node": "26.6.3",
     "@types/react": "19.3.0",
