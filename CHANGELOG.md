@@ -5,6 +5,7 @@ All notable changes to OpenCode Model Control are recorded here. The project fol
 ## Unreleased
 
 - Cap MCP tool-call arguments at 32 array elements and object keys, and update `@modelcontextprotocol/server` to 2.3.1. That release patches GHSA-46jr-4wx8-v453, where one request could exhaust memory during validation. `@modelcontextprotocol/client` moves to the same release so the server and its tests share one core.
+- Update Vite to 8.3.5 and the locked PostCSS `source-map-js` to 1.2.2 so `npm audit --audit-level=high` is clear.
 
 ## 0.4.1
 
