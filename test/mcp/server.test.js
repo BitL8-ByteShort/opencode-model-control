@@ -108,3 +108,22 @@ test("MCP relays panel state without secrets and returns a bounded route", async
   assert.equal(routePayload.assignments[0].mayDelegate, false);
   assert.equal(JSON.stringify(routePayload).includes("private task description"), false);
 });
+
+test("MCP rejects tool arguments above the element cap", async (t) => {
+  const { client, server } = await connectedClient();
+  t.after(async () => {
+    await client.close();
+    await server.close();
+  });
+
+  const oversized = { task: "route this" };
+  for (let index = 0; index < 32; index += 1) oversized[`extra${index}`] = index;
+  const result = await client.callTool({
+    name: "route_task",
+    arguments: oversized,
+  });
+  assert.equal(result.isError, true);
+  const text = result.content.find(({ type }) => type === "text")?.text ?? "";
+  assert.match(text, /maximum of 32 elements/u);
+  assert.equal(result.structuredContent, undefined);
+});
