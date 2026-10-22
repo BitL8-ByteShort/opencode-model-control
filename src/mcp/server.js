@@ -132,6 +132,10 @@ export async function createModelControlMcpServer({ service } = {}) {
     {
       instructions:
         "Read-only policy-controlled model routing. Call route_task before delegating nontrivial work. Follow the returned agentId exactly, stop when route is direct, and never let a specialist delegate recursively.",
+      // GHSA-46jr-4wx8-v453: the patched SDK leaves this off. Both tools
+      // accept at most two argument keys, so a small cap rejects the
+      // unbounded arrays and objects that exhaust memory during validation.
+      maxToolInputElements: 32,
     },
   );
 

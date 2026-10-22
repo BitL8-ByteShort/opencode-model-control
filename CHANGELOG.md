@@ -2,6 +2,10 @@
 
 All notable changes to OpenCode Model Control are recorded here. The project follows [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+- Cap MCP tool-call arguments at 32 array elements and object keys, and update `@modelcontextprotocol/server` to 2.3.1. That release patches GHSA-46jr-4wx8-v453, where one request could exhaust memory during validation. `@modelcontextprotocol/client` moves to the same release so the server and its tests share one core.
+
 ## 0.4.1
 
 - Keep zero token rates on plan-specific provider slots from authorizing Free access, including old saved catalogs and public metadata caches. Configured Paid access remains available without an API estimate.
